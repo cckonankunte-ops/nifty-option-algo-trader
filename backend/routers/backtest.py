@@ -1,0 +1,81 @@
+"""Backtest router — /api/backtest endpoints."""
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional
+
+from backend.database import get_db
+from backend.backtest.backtest_runner import BacktestRunner
+
+router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+
+
+class BacktestRequest(BaseModel):
+    start_date: str = Field(..., description="YYYY-MM-DD")
+    end_date: str = Field(..., description="YYYY-MM-DD")
+    initial_capital: float = Field(..., gt=0)
+    signal_mode: str = Field(default="SIMPLE_5MIN")
+    adx_period: int = Field(default=14)
+    adx_threshold: int = Field(default=25)
+
+
+@router.post("/run")
+async def run_backtest(request: BacktestRequest):
+    """Trigger a backtest with given parameters."""
+    runner = BacktestRunner(fyers_client=None)  # Will be wired to actual client
+
+    result = runner.run(
+        start_date=request.start_date,
+        end_date=request.end_date,
+        initial_capital=request.initial_capital,
+        signal_mode=request.signal_mode,
+        adx_period=request.adx_period,
+        adx_threshold=request.adx_threshold,
+    )
+
+    return result
+
+
+@router.get("/results")
+async def list_results(db=Depends(get_db)):
+    """List all past backtest runs."""
+    from backend.models import BacktestResult
+    from sqlalchemy import select
+
+    stmt = select(BacktestResult).order_by(BacktestResult.run_date.desc())
+    results = db.execute(stmt).scalars().all()
+    return [{"id": r.id, "run_date": str(r.run_date), "signal_mode": r.signal_mode,
+             "total_return_percent": r.total_return_percent, "total_trades": r.total_trades}
+            for r in results]
+
+
+@router.get("/results/{result_id}")
+async def get_result(result_id: int, db=Depends(get_db)):
+    """Get full details of one backtest run."""
+    from backend.models import BacktestResult
+
+    result = db.get(BacktestResult, result_id)
+    if not result:
+        raise HTTPException(404, "Backtest result not found")
+
+    return {
+        "id": result.id,
+        "run_date": str(result.run_date),
+        "start_date": result.start_date,
+        "end_date": result.end_date,
+        "initial_capital": result.initial_capital,
+        "final_capital": result.final_capital,
+        "signal_mode": result.signal_mode,
+        "total_trades": result.total_trades,
+        "winning_trades": result.winning_trades,
+        "losing_trades": result.losing_trades,
+        "win_rate": result.win_rate,
+        "avg_profit": result.avg_profit,
+        "avg_loss": result.avg_loss,
+        "max_drawdown": result.max_drawdown,
+        "sharpe_ratio": result.sharpe_ratio,
+        "total_return_percent": result.total_return_percent,
+        "adx_filtered_count": result.adx_filtered_count,
+        "equity_curve_data": result.equity_curve_data,
+        "trade_log": result.trade_log,
+    }
