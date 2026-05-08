@@ -14,6 +14,10 @@ _engine_state = {
     "today_pnl": 0.0,
     "today_trades": 0,
     "trading_window": {"start": "09:45", "end": "15:00"},
+    "broker": "dhan",
+    "paper_mode": True,
+    "instrument_master_loaded": False,
+    "broker_connected": False,
 }
 
 

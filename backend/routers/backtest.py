@@ -22,7 +22,7 @@ class BacktestRequest(BaseModel):
 @router.post("/run")
 async def run_backtest(request: BacktestRequest):
     """Trigger a backtest with given parameters."""
-    runner = BacktestRunner(fyers_client=None)  # Will be wired to actual client
+    runner = BacktestRunner()
 
     result = runner.run(
         start_date=request.start_date,

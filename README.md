@@ -4,26 +4,30 @@ Automated algorithmic trading for Nifty Options (Buy Call / Buy Put) on the Indi
 
 ## Tech Stack
 
-- **Backend**: Python 3.11+, FastAPI, fyers-apiv3, pandas-ta, APScheduler, SQLAlchemy
+- **Backend**: Python 3.11+, FastAPI, DhanHQ SDK, pandas-ta, APScheduler, SQLAlchemy
 - **Frontend**: React 18 + Vite, TailwindCSS, Recharts
-- **Broker**: Fyers API v3
+- **Broker**: Dhan (DhanHQ API)
 
 ## Setup
 
-### 1. Create Fyers Account
-- Register at [Fyers](https://myapi.fyers.in/)
-- Create an API app and note your App ID and Secret Key
+### 1. Create Dhan Account
+- Log in to Dhan app or web at https://dhan.co
+- Go to My Profile → Access Token
+- Generate a new access token (valid for 30 days)
+- Copy your Client ID and Access Token
 
 ### 2. Backend Setup
 ```bash
-cd backend
-pip install -r ../requirements.txt
+pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment
 ```bash
 cp .env.example .env
-# Edit .env with your Fyers credentials
+# Edit .env with your Dhan credentials:
+# DHAN_CLIENT_ID=your_client_id
+# DHAN_ACCESS_TOKEN=your_access_token
+# DHAN_SANDBOX_MODE=true  ← set to false for live trading
 ```
 
 ### 4. Run Database Migrations

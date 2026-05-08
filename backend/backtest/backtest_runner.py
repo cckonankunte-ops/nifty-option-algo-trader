@@ -16,12 +16,9 @@ logger = logging.getLogger(__name__)
 class BacktestRunner:
     """Runs backtests using historical candle data and the SignalEngine."""
 
-    def __init__(self, fyers_client=None):
-        """
-        Args:
-            fyers_client: Fyers API client for fetching historical data
-        """
-        self.fyers = fyers_client
+    def __init__(self):
+        """Initialize backtest runner (uses Dhan feed internally)."""
+        pass
 
     def run(
         self,
@@ -197,13 +194,17 @@ class BacktestRunner:
 
     def _fetch_candles_paginated(self, start_date: str, end_date: str, resolution: str) -> pd.DataFrame:
         """Fetch candles with 100-day pagination."""
-        if self.fyers is None:
-            logger.warning("No Fyers client — returning empty candles for backtest")
+        if False:  # Dhan feed is initialized inside _fetch_candles_paginated
+            logger.warning("No client — returning empty candles for backtest")
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
-        from backend.data.fyers_feed import FyersFeed, NIFTY_SYMBOL
-        feed = FyersFeed(fyers_client=self.fyers)
-        return feed.fetch_historical_candles(NIFTY_SYMBOL, resolution, start_date, end_date)
+        from backend.data.dhan_feed import DhanFeed, NIFTY_INDEX_SECURITY_ID
+        from backend.config import settings
+        feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
+        return feed.fetch_nifty_spot_candles_5min(start_date, end_date) if resolution == "5" else feed._fetch_historical(
+            security_id=NIFTY_INDEX_SECURITY_ID, exchange_segment="NSE_EQ",
+            instrument_type="INDEX", interval=int(resolution), from_date=start_date, to_date=end_date
+        )
 
     def _compute_metrics(self, trade_log: list, initial_capital: float, final_capital: float, equity_curve: list) -> dict:
         """Compute backtest performance metrics."""

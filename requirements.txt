@@ -6,7 +6,7 @@ pandas==2.2.2
 pandas-ta==0.3.14b1
 numpy==1.26.4
 apscheduler==3.10.4
-fyers-apiv3==3.0.5
+dhanhq>=2.0.0
 vectorbt==0.26.2
 python-dotenv==1.0.1
 websockets==12.0

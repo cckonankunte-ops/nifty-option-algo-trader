@@ -13,11 +13,18 @@ class SettingsUpdate(BaseModel):
     log_level: Optional[str] = None
 
 
+class DhanCredentials(BaseModel):
+    dhan_client_id: str
+    dhan_access_token: str
+
+
 @router.get("")
 async def get_settings():
     """Get current application settings."""
     return {
-        "broker_connected": bool(settings.FYERS_ACCESS_TOKEN),
+        "broker": "dhan",
+        "broker_connected": bool(settings.DHAN_ACCESS_TOKEN),
+        "paper_mode": settings.DHAN_SANDBOX_MODE,
         "trading_mode": settings.TRADING_MODE,
         "environment": settings.ENVIRONMENT,
         "log_level": settings.LOG_LEVEL,
@@ -37,7 +44,29 @@ async def update_settings(update: SettingsUpdate):
 async def broker_status():
     """Check broker connection status."""
     return {
-        "connected": bool(settings.FYERS_ACCESS_TOKEN),
-        "app_id_configured": bool(settings.FYERS_APP_ID),
-        "trading_mode": settings.TRADING_MODE,
+        "broker": "dhan",
+        "connected": bool(settings.DHAN_ACCESS_TOKEN),
+        "client_id_configured": bool(settings.DHAN_CLIENT_ID),
+        "paper_mode": settings.DHAN_SANDBOX_MODE,
+    }
+
+
+@router.post("/broker/credentials")
+async def save_credentials(creds: DhanCredentials):
+    """Save Dhan credentials (runtime only — persist in .env manually)."""
+    settings.DHAN_CLIENT_ID = creds.dhan_client_id
+    settings.DHAN_ACCESS_TOKEN = creds.dhan_access_token
+    return {"message": "Credentials updated for this session"}
+
+
+@router.post("/broker/verify")
+async def verify_broker():
+    """Verify Dhan API connectivity."""
+    from backend.engine.order_executor import OrderExecutor
+
+    executor = OrderExecutor()
+    connected = executor.verify_connection()
+    return {
+        "connected": connected,
+        "message": "Dhan connection verified" if connected else "Connection failed — check credentials",
     }

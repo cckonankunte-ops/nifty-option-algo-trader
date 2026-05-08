@@ -136,12 +136,15 @@ class MarketScheduler:
         return start_minutes <= current_minutes <= end_minutes
 
     async def _market_open_job(self):
-        """9:15 AM — verify token, reset daily counters, init feed."""
+        """9:15 AM — load instrument master, verify broker, reset daily counters."""
         if self._is_holiday():
             logger.info("Today is an NSE holiday — skipping all trading jobs")
             return
 
         logger.info("Market open job triggered")
+
+        # Dhan does not need daily token refresh — token lasts 30 days.
+        # Instead, load instrument master and verify connection.
         if self._on_market_open:
             await self._on_market_open()
 
