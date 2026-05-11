@@ -109,20 +109,26 @@ class SignalEngine:
                 f"RSI={rsi_val:.1f}, price={price:.2f}, VWAP={vwap_val:.2f}"
             )
 
-        if bullish_crossover and rsi_val > rsi_upper and price > vwap_val:
-            signal = "BUY_CALL"
-            reason = (
-                f"EMA{getattr(self.config, 'ema_fast', 9)} crossed above "
-                f"EMA{getattr(self.config, 'ema_slow', 21)}, "
-                f"RSI={rsi_val:.1f} > {rsi_upper}, price={price:.2f} > VWAP={vwap_val:.2f}"
-            )
-        elif bearish_crossover and rsi_val < rsi_lower and price < vwap_val:
-            signal = "BUY_PUT"
-            reason = (
-                f"EMA{getattr(self.config, 'ema_fast', 9)} crossed below "
-                f"EMA{getattr(self.config, 'ema_slow', 21)}, "
-                f"RSI={rsi_val:.1f} < {rsi_lower}, price={price:.2f} < VWAP={vwap_val:.2f}"
-            )
+        # For daily candles, VWAP is cumulative and less meaningful
+        # Check if data appears to be daily (few candles) vs intraday (many candles)
+        is_daily = len(df) < 200  # Heuristic: daily data has fewer rows
+
+        if bullish_crossover and rsi_val > rsi_upper:
+            if is_daily or price > vwap_val:
+                signal = "BUY_CALL"
+                reason = (
+                    f"EMA{getattr(self.config, 'ema_fast', 9)} crossed above "
+                    f"EMA{getattr(self.config, 'ema_slow', 21)}, "
+                    f"RSI={rsi_val:.1f} > {rsi_upper}, price={price:.2f}"
+                )
+        elif bearish_crossover and rsi_val < rsi_lower:
+            if is_daily or price < vwap_val:
+                signal = "BUY_PUT"
+                reason = (
+                    f"EMA{getattr(self.config, 'ema_fast', 9)} crossed below "
+                    f"EMA{getattr(self.config, 'ema_slow', 21)}, "
+                    f"RSI={rsi_val:.1f} < {rsi_lower}, price={price:.2f}"
+                )
 
         return self._build_response(signal, reason, df)
 
