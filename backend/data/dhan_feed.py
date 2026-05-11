@@ -309,13 +309,18 @@ class DhanFeed:
                 from_dt = current_start.strftime("%Y-%m-%d") + " 09:15:00"
                 to_dt = current_end.strftime("%Y-%m-%d") + " 15:30:00"
 
+                logger.info(f"Intraday request: sid={security_id}, seg={exchange_segment}, type={instrument_type}, interval={interval}, from={from_dt}, to={to_dt}")
+
                 response = self.dhan.intraday_minute_data(
                     security_id=security_id,
                     exchange_segment=exchange_segment,
                     instrument_type=instrument_type,
                     from_date=from_dt,
                     to_date=to_dt,
+                    interval=interval,
                 )
+
+                logger.info(f"Intraday response: status={response.get('status') if response else None}, remarks={response.get('remarks', '') if response else ''}")
 
                 if response and response.get("status") == "success" and response.get("data"):
                     data = response["data"]
