@@ -193,18 +193,11 @@ class BacktestRunner:
         }
 
     def _fetch_candles_paginated(self, start_date: str, end_date: str, resolution: str) -> pd.DataFrame:
-        """Fetch candles with 100-day pagination."""
-        if False:  # Dhan feed is initialized inside _fetch_candles_paginated
-            logger.warning("No client — returning empty candles for backtest")
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
-
+        """Fetch candles with 100-day pagination via Dhan."""
         from backend.data.dhan_feed import DhanFeed, NIFTY_INDEX_SECURITY_ID
         from backend.config import settings
         feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
-        return feed.fetch_nifty_spot_candles_5min(start_date, end_date) if resolution == "5" else feed._fetch_historical(
-            security_id=NIFTY_INDEX_SECURITY_ID, exchange_segment="NSE_EQ",
-            instrument_type="INDEX", interval=int(resolution), from_date=start_date, to_date=end_date
-        )
+        return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
 
     def _compute_metrics(self, trade_log: list, initial_capital: float, final_capital: float, equity_curve: list) -> dict:
         """Compute backtest performance metrics."""

@@ -240,37 +240,117 @@ class DhanFeed:
             from_date: "YYYY-MM-DD"
             to_date: "YYYY-MM-DD"
         """
-        return self._fetch_historical(
+        return self._fetch_historical_range(
             security_id=NIFTY_INDEX_SECURITY_ID,
             exchange_segment="NSE_EQ",
             instrument_type="INDEX",
-            interval=5,
+            interval="5",
             from_date=from_date,
             to_date=to_date,
         )
 
     def fetch_candles_5min(self, security_id: str, from_date: str, to_date: str) -> pd.DataFrame:
         """Fetch 5-min candles for an option security_id."""
-        return self._fetch_historical(
+        return self._fetch_historical_range(
             security_id=security_id,
             exchange_segment="NSE_FNO",
-            instrument_type="OPTIONS",
-            interval=5,
+            instrument_type="OPTIDX",
+            interval="5",
             from_date=from_date,
             to_date=to_date,
         )
 
     def fetch_candles_1min(self, security_id: str, from_date: str, to_date: str) -> pd.DataFrame:
         """Fetch 1-min candles for an option security_id (last 30 rows)."""
-        df = self._fetch_historical(
+        df = self._fetch_historical_range(
             security_id=security_id,
             exchange_segment="NSE_FNO",
-            instrument_type="OPTIONS",
-            interval=1,
+            instrument_type="OPTIDX",
+            interval="1",
             from_date=from_date,
             to_date=to_date,
         )
         return df.tail(30)
+
+    def _fetch_historical_range(
+        self,
+        security_id: str,
+        exchange_segment: str,
+        instrument_type: str,
+        interval: str,
+        from_date: str,
+        to_date: str,
+    ) -> pd.DataFrame:
+        """Fetch historical candles using Dhan's historical_minute_charts with pagination."""
+        if self.dhan is None:
+            logger.warning("Dhan client not initialized — cannot fetch historical data")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        start = datetime.strptime(from_date, "%Y-%m-%d")
+        end = datetime.strptime(to_date, "%Y-%m-%d")
+        all_candles = []
+
+        current_start = start
+        while current_start <= end:
+            current_end = min(current_start + timedelta(days=99), end)
+
+            try:
+                response = self.dhan.historical_minute_charts(
+                    security_id=security_id,
+                    exchange_segment=exchange_segment,
+                    instrument_type=instrument_type,
+                    from_date=current_start.strftime("%Y-%m-%d"),
+                    to_date=current_end.strftime("%Y-%m-%d"),
+                )
+
+                if response and response.get("status") == "success" and response.get("data"):
+                    data = response["data"]
+                    if isinstance(data, dict) and "open" in data:
+                        timestamps = data.get("start_Time", data.get("timestamp", []))
+                        opens = data.get("open", [])
+                        highs = data.get("high", [])
+                        lows = data.get("low", [])
+                        closes = data.get("close", [])
+                        volumes = data.get("volume", [0] * len(opens))
+
+                        for i in range(len(opens)):
+                            all_candles.append({
+                                "timestamp": timestamps[i] if i < len(timestamps) else None,
+                                "open": opens[i],
+                                "high": highs[i],
+                                "low": lows[i],
+                                "close": closes[i],
+                                "volume": volumes[i] if i < len(volumes) else 0,
+                            })
+                    elif isinstance(data, list):
+                        all_candles.extend(data)
+                else:
+                    logger.warning(f"Dhan API no data for {security_id} ({current_start.date()} to {current_end.date()})")
+
+            except Exception as e:
+                logger.error(f"Error fetching candles {current_start.date()} to {current_end.date()}: {e}")
+
+            current_start = current_end + timedelta(days=1)
+
+        if not all_candles:
+            logger.warning(f"No candle data fetched for security_id={security_id}")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        df = pd.DataFrame(all_candles)
+
+        # Normalize column names
+        col_map = {"start_Time": "timestamp", "start_time": "timestamp"}
+        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+
+        for col in ["timestamp", "open", "high", "low", "close", "volume"]:
+            if col not in df.columns:
+                df[col] = 0
+
+        if len(df) > 0 and df["timestamp"].notna().any():
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df = df.sort_values("timestamp").reset_index(drop=True)
+
+        return df[["timestamp", "open", "high", "low", "close", "volume"]]
 
     def _fetch_historical(
         self,
@@ -283,6 +363,7 @@ class DhanFeed:
     ) -> pd.DataFrame:
         """Fetch historical candles with 100-day pagination."""
         if self.dhan is None:
+            logger.warning("Dhan client not initialized — cannot fetch historical data")
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
         start = datetime.strptime(from_date, "%Y-%m-%d")
@@ -290,38 +371,62 @@ class DhanFeed:
         all_candles = []
 
         current_start = start
-        while current_start < end:
+        while current_start <= end:
             current_end = min(current_start + timedelta(days=99), end)
 
             try:
-                response = self.dhan.intraday_minute_data(
+                # Dhan SDK method for intraday historical data
+                response = self.dhan.intraday_daily_minute_charts(
                     security_id=security_id,
                     exchange_segment=exchange_segment,
                     instrument_type=instrument_type,
-                    from_date=current_start.strftime("%Y-%m-%d"),
-                    to_date=current_end.strftime("%Y-%m-%d"),
-                    interval=interval,
                 )
 
-                if response and response.get("data"):
-                    candles = response["data"]
-                    all_candles.extend(candles)
+                if response and response.get("status") == "success" and response.get("data"):
+                    data = response["data"]
+                    # Dhan returns: {"open": [...], "high": [...], "low": [...], "close": [...], "volume": [...], "start_Time": [...]}
+                    if isinstance(data, dict) and "open" in data:
+                        timestamps = data.get("start_Time", data.get("timestamp", []))
+                        for i in range(len(data["open"])):
+                            candle = {
+                                "timestamp": timestamps[i] if i < len(timestamps) else None,
+                                "open": data["open"][i],
+                                "high": data["high"][i],
+                                "low": data["low"][i],
+                                "close": data["close"][i],
+                                "volume": data["volume"][i] if "volume" in data else 0,
+                            }
+                            all_candles.append(candle)
+                    elif isinstance(data, list):
+                        all_candles.extend(data)
+                else:
+                    logger.warning(f"Dhan API returned no data for {security_id} ({current_start} to {current_end}): {response}")
+
             except Exception as e:
                 logger.error(f"Error fetching candles {current_start} to {current_end}: {e}")
 
             current_start = current_end + timedelta(days=1)
 
         if not all_candles:
+            logger.warning(f"No candle data fetched for security_id={security_id}")
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
         df = pd.DataFrame(all_candles)
-        # Normalize column names
-        col_map = {"start_Time": "timestamp", "open": "open", "high": "high",
-                   "low": "low", "close": "close", "volume": "volume"}
+
+        # Normalize column names (Dhan uses start_Time)
+        col_map = {"start_Time": "timestamp", "start_time": "timestamp"}
         df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
 
-        if "timestamp" in df.columns:
+        # Ensure required columns exist
+        for col in ["timestamp", "open", "high", "low", "close", "volume"]:
+            if col not in df.columns:
+                df[col] = 0
+
+        if "timestamp" in df.columns and len(df) > 0:
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             df = df.sort_values("timestamp").reset_index(drop=True)
+
+            # Filter to requested date range
+            df = df[(df["timestamp"] >= pd.Timestamp(from_date)) & (df["timestamp"] <= pd.Timestamp(to_date) + timedelta(days=1))]
 
         return df[["timestamp", "open", "high", "low", "close", "volume"]]
