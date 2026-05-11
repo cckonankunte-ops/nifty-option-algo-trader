@@ -305,6 +305,8 @@ class DhanFeed:
                 security_id=security_id,
                 exchange_segment=exchange_segment,
                 instrument_type=instrument_type,
+                from_date=from_date,
+                to_date=to_date,
             )
 
             logger.info(f"Dhan API response status: {response.get('status') if response else 'None'}")
