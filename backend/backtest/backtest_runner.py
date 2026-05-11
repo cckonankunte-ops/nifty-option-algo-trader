@@ -73,8 +73,9 @@ class BacktestRunner:
         adx_filtered_count = 0
         sl_pct = max(sl_percent, 3.0)
 
-        # Iterate through 5-min candles
-        lookback = max(ema_slow + 5, 30)
+        # Iterate through candles
+        # Need at least ema_slow + 2 candles for crossover detection
+        lookback = ema_slow + 2
 
         for i in range(lookback, len(candles_5min)):
             window_5min = candles_5min.iloc[max(0, i - lookback):i + 1].copy()
