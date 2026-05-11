@@ -15,6 +15,7 @@ class BacktestRequest(BaseModel):
     end_date: str = Field(..., description="YYYY-MM-DD")
     initial_capital: float = Field(..., gt=0)
     signal_mode: str = Field(default="SIMPLE_5MIN")
+    candle_interval: str = Field(default="daily", description="daily, 5, or 1")
     adx_period: int = Field(default=14)
     adx_threshold: int = Field(default=25)
     rsi_upper: int = Field(default=50)
@@ -31,6 +32,7 @@ async def run_backtest(request: BacktestRequest):
         end_date=request.end_date,
         initial_capital=request.initial_capital,
         signal_mode=request.signal_mode,
+        candle_interval=request.candle_interval,
         adx_period=request.adx_period,
         adx_threshold=request.adx_threshold,
         rsi_upper=request.rsi_upper,

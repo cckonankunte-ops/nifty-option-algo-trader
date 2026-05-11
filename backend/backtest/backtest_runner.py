@@ -26,6 +26,7 @@ class BacktestRunner:
         end_date: str,
         initial_capital: float,
         signal_mode: str = "SIMPLE_5MIN",
+        candle_interval: str = "daily",
         ema_fast: int = 9,
         ema_slow: int = 21,
         rsi_period: int = 14,
@@ -41,7 +42,7 @@ class BacktestRunner:
         Run a backtest over the specified date range.
 
         Returns:
-            dict with metrics, equity_curve, trade_log, adx_filtered_count
+            dict with metrics, equity_curve, trade_log, daily_pnl, adx_filtered_count
         """
         # Build config mock
         config = MagicMock()
@@ -56,10 +57,10 @@ class BacktestRunner:
 
         engine = SignalEngine(config)
 
-        # Fetch historical candles with pagination
-        candles_5min = self._fetch_candles_paginated(start_date, end_date, "5")
+        # Fetch historical candles based on selected interval
+        candles_5min = self._fetch_candles_paginated(start_date, end_date, candle_interval)
         candles_1min = None
-        if signal_mode == "ADVANCED_5MIN_1MIN_ADX":
+        if signal_mode == "ADVANCED_5MIN_1MIN_ADX" and candle_interval != "1":
             candles_1min = self._fetch_candles_paginated(start_date, end_date, "1")
 
         if candles_5min.empty:
@@ -200,19 +201,48 @@ class BacktestRunner:
         metrics = self._compute_metrics(trade_log, initial_capital, capital, equity_curve)
         metrics["adx_filtered_count"] = adx_filtered_count
         metrics["signal_mode"] = signal_mode
+        metrics["candle_interval"] = candle_interval
+
+        # Compute daily P&L from trade log
+        daily_pnl = self._compute_daily_pnl(trade_log)
 
         return {
             "metrics": metrics,
             "equity_curve": equity_curve,
             "trade_log": trade_log,
+            "daily_pnl": daily_pnl,
         }
 
     def _fetch_candles_paginated(self, start_date: str, end_date: str, resolution: str) -> pd.DataFrame:
-        """Fetch candles with 100-day pagination via Dhan."""
+        """Fetch candles via Dhan. resolution: 'daily', '5', or '1'."""
         from backend.data.dhan_feed import DhanFeed, NIFTY_INDEX_SECURITY_ID
         from backend.config import settings
         feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
-        return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
+
+        if resolution == "daily":
+            return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
+        elif resolution == "5":
+            return feed._fetch_intraday_range(NIFTY_INDEX_SECURITY_ID, "NSE_EQ", "INDEX", "5", start_date, end_date)
+        elif resolution == "1":
+            return feed._fetch_intraday_range(NIFTY_INDEX_SECURITY_ID, "NSE_EQ", "INDEX", "1", start_date, end_date)
+        else:
+            return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
+
+    def _compute_daily_pnl(self, trade_log: list) -> list:
+        """Compute daily P&L from trade log for bar chart visualization."""
+        if not trade_log:
+            return []
+
+        daily = {}
+        for trade in trade_log:
+            exit_time = trade.get("exit_time", "")
+            if exit_time:
+                day = exit_time[:10]  # "YYYY-MM-DD"
+                if day not in daily:
+                    daily[day] = 0.0
+                daily[day] += trade.get("pnl", 0)
+
+        return [{"date": k, "pnl": round(v, 2)} for k, v in sorted(daily.items())]
 
     def _compute_metrics(self, trade_log: list, initial_capital: float, final_capital: float, equity_curve: list) -> dict:
         """Compute backtest performance metrics."""

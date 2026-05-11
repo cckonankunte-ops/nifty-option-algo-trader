@@ -281,6 +281,95 @@ class DhanFeed:
         )
         return df.tail(30)
 
+    def _fetch_intraday_range(
+        self,
+        security_id: str,
+        exchange_segment: str,
+        instrument_type: str,
+        interval: str,
+        from_date: str,
+        to_date: str,
+    ) -> pd.DataFrame:
+        """Fetch intraday minute candles using Dhan's intraday charts API (max 5 days per call)."""
+        if self.dhan is None:
+            logger.warning("Dhan client not initialized — cannot fetch intraday data")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        start = datetime.strptime(from_date, "%Y-%m-%d")
+        end = datetime.strptime(to_date, "%Y-%m-%d")
+        all_candles = []
+
+        # Iterate in 5-day chunks (Dhan intraday API limit)
+        current_start = start
+        while current_start <= end:
+            current_end = min(current_start + timedelta(days=4), end)
+
+            try:
+                # Dhan intraday API requires datetime format "YYYY-MM-DD HH:MM:SS"
+                from_dt = current_start.strftime("%Y-%m-%d") + " 09:15:00"
+                to_dt = current_end.strftime("%Y-%m-%d") + " 15:30:00"
+
+                response = self.dhan.intraday_minute_data(
+                    security_id=security_id,
+                    exchange_segment=exchange_segment,
+                    instrument_type=instrument_type,
+                    from_date=from_dt,
+                    to_date=to_dt,
+                )
+
+                if response and response.get("status") == "success" and response.get("data"):
+                    data = response["data"]
+                    if isinstance(data, dict) and "open" in data:
+                        timestamps = data.get("timestamp", data.get("start_Time", []))
+                        opens = data.get("open", [])
+                        highs = data.get("high", [])
+                        lows = data.get("low", [])
+                        closes = data.get("close", [])
+                        volumes = data.get("volume", [0] * len(opens))
+
+                        if len(opens) > 0:
+                            logger.info(f"Intraday: got {len(opens)} candles for {current_start.date()} to {current_end.date()}")
+
+                        for i in range(len(opens)):
+                            all_candles.append({
+                                "timestamp": timestamps[i] if i < len(timestamps) else None,
+                                "open": opens[i],
+                                "high": highs[i],
+                                "low": lows[i],
+                                "close": closes[i],
+                                "volume": volumes[i] if i < len(volumes) else 0,
+                            })
+
+            except Exception as e:
+                logger.error(f"Error fetching intraday {current_start.date()} to {current_end.date()}: {e}")
+
+            current_start = current_end + timedelta(days=1)
+
+        if not all_candles:
+            logger.warning(f"No intraday data for security_id={security_id} ({from_date} to {to_date})")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        df = pd.DataFrame(all_candles)
+
+        # Normalize timestamps
+        col_map = {"start_Time": "timestamp", "start_time": "timestamp"}
+        df = df.rename(columns={k: v for k, v in col_map.items() if k in df.columns})
+
+        for col in ["timestamp", "open", "high", "low", "close", "volume"]:
+            if col not in df.columns:
+                df[col] = 0
+
+        if len(df) > 0 and df["timestamp"].notna().any():
+            sample = df["timestamp"].iloc[0]
+            if isinstance(sample, (int, float)) and sample > 1_000_000_000:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+            else:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+            df = df.dropna(subset=["timestamp"])
+            df = df.sort_values("timestamp").reset_index(drop=True)
+
+        return df[["timestamp", "open", "high", "low", "close", "volume"]]
+
     def _fetch_historical_range(
         self,
         security_id: str,
