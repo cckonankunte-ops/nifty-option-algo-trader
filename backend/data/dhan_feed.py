@@ -290,82 +290,55 @@ class DhanFeed:
         from_date: str,
         to_date: str,
     ) -> pd.DataFrame:
-        """Fetch historical candles by iterating day-by-day (intraday_minute_data supports max 5 days)."""
+        """Fetch historical candles using historical_daily_data (supports full date ranges)."""
         if self.dhan is None:
             logger.warning("Dhan client not initialized — cannot fetch historical data")
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
-        from datetime import date as date_type
-        start = datetime.strptime(from_date, "%Y-%m-%d").date()
-        end = datetime.strptime(to_date, "%Y-%m-%d").date()
         all_candles = []
 
-        # Iterate in 5-day chunks (Dhan intraday_minute_data supports max 5 days)
-        current_start = start
-        while current_start <= end:
-            current_end = min(current_start + timedelta(days=4), end)
+        try:
+            logger.info(f"Fetching daily candles: security_id={security_id}, segment={exchange_segment}, type={instrument_type}, from={from_date}, to={to_date}")
 
-            try:
-                logger.info(f"Fetching chunk: {current_start} to {current_end}")
+            response = self.dhan.historical_daily_data(
+                security_id=security_id,
+                exchange_segment=exchange_segment,
+                instrument_type=instrument_type,
+                from_date=from_date,
+                to_date=to_date,
+            )
 
-                response = self.dhan.intraday_minute_data(
-                    security_id=security_id,
-                    exchange_segment=exchange_segment,
-                    instrument_type=instrument_type,
-                    from_date=current_start.strftime("%Y-%m-%d"),
-                    to_date=current_end.strftime("%Y-%m-%d"),
-                )
+            if response and response.get("status") == "success" and response.get("data"):
+                data = response["data"]
 
-                # Log raw response for debugging
-                if response:
-                    data = response.get("data", {})
-                    if isinstance(data, dict):
-                        candle_count = len(data.get("open", []))
-                        if candle_count == 0:
-                            # Try historical_daily_data as fallback
-                            logger.debug(f"intraday_minute_data returned 0 candles, trying historical_daily_data")
-                            response = self.dhan.historical_daily_data(
-                                security_id=security_id,
-                                exchange_segment=exchange_segment,
-                                instrument_type=instrument_type,
-                                from_date=current_start.strftime("%Y-%m-%d"),
-                                to_date=current_end.strftime("%Y-%m-%d"),
-                            )
-                            logger.info(f"historical_daily_data response: status={response.get('status')}, data_keys={list(response.get('data', {}).keys()) if isinstance(response.get('data'), dict) else type(response.get('data'))}")
+                if isinstance(data, dict) and "open" in data:
+                    timestamps = data.get("timestamp", data.get("start_Time", []))
+                    opens = data.get("open", [])
+                    highs = data.get("high", [])
+                    lows = data.get("low", [])
+                    closes = data.get("close", [])
+                    volumes = data.get("volume", [0] * len(opens))
 
-                if response and response.get("status") == "success" and response.get("data"):
-                    data = response["data"]
+                    logger.info(f"Got {len(opens)} daily candles from Dhan")
 
-                    if isinstance(data, dict) and "open" in data:
-                        timestamps = data.get("timestamp", data.get("start_Time", []))
-                        opens = data.get("open", [])
-                        highs = data.get("high", [])
-                        lows = data.get("low", [])
-                        closes = data.get("close", [])
-                        volumes = data.get("volume", [0] * len(opens))
+                    for i in range(len(opens)):
+                        all_candles.append({
+                            "timestamp": timestamps[i] if i < len(timestamps) else None,
+                            "open": opens[i],
+                            "high": highs[i],
+                            "low": lows[i],
+                            "close": closes[i],
+                            "volume": volumes[i] if i < len(volumes) else 0,
+                        })
+                elif isinstance(data, list) and len(data) > 0:
+                    logger.info(f"Got {len(data)} candles as list")
+                    all_candles.extend(data)
+            else:
+                remarks = response.get("remarks", "") if response else ""
+                logger.warning(f"Dhan API returned no data: {remarks}")
 
-                        if len(opens) > 0:
-                            logger.info(f"Got {len(opens)} candles for {current_start} to {current_end}")
-
-                        for i in range(len(opens)):
-                            all_candles.append({
-                                "timestamp": timestamps[i] if i < len(timestamps) else None,
-                                "open": opens[i],
-                                "high": highs[i],
-                                "low": lows[i],
-                                "close": closes[i],
-                                "volume": volumes[i] if i < len(volumes) else 0,
-                            })
-                    elif isinstance(data, list) and len(data) > 0:
-                        all_candles.extend(data)
-                else:
-                    remarks = response.get("remarks", "") if response else ""
-                    logger.debug(f"No data for {current_start} to {current_end}: {remarks}")
-
-            except Exception as e:
-                logger.error(f"Error fetching candles {current_start} to {current_end}: {e}")
-
-            current_start = current_end + timedelta(days=1)
+        except Exception as e:
+            logger.error(f"Error fetching candles: {e}", exc_info=True)
 
         if not all_candles:
             logger.warning(f"No candle data fetched for security_id={security_id} ({from_date} to {to_date})")
@@ -383,12 +356,12 @@ class DhanFeed:
                 df[col] = 0
 
         if len(df) > 0 and df["timestamp"].notna().any():
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", errors="coerce")
-            # If epoch conversion failed, try direct parsing
-            if df["timestamp"].isna().all():
-                df["timestamp"] = pd.to_datetime(all_candles[0]["timestamp"], errors="coerce")
-                if pd.isna(df["timestamp"].iloc[0]):
-                    df["timestamp"] = pd.to_datetime([c["timestamp"] for c in all_candles], errors="coerce")
+            # Dhan returns epoch timestamps
+            sample = df["timestamp"].iloc[0]
+            if isinstance(sample, (int, float)) and sample > 1_000_000_000:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+            else:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
 
             df = df.dropna(subset=["timestamp"])
             df = df.sort_values("timestamp").reset_index(drop=True)
