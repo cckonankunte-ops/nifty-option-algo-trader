@@ -316,6 +316,23 @@ class DhanFeed:
                     to_date=current_end.strftime("%Y-%m-%d"),
                 )
 
+                # Log raw response for debugging
+                if response:
+                    data = response.get("data", {})
+                    if isinstance(data, dict):
+                        candle_count = len(data.get("open", []))
+                        if candle_count == 0:
+                            # Try historical_daily_data as fallback
+                            logger.debug(f"intraday_minute_data returned 0 candles, trying historical_daily_data")
+                            response = self.dhan.historical_daily_data(
+                                security_id=security_id,
+                                exchange_segment=exchange_segment,
+                                instrument_type=instrument_type,
+                                from_date=current_start.strftime("%Y-%m-%d"),
+                                to_date=current_end.strftime("%Y-%m-%d"),
+                            )
+                            logger.info(f"historical_daily_data response: status={response.get('status')}, data_keys={list(response.get('data', {}).keys()) if isinstance(response.get('data'), dict) else type(response.get('data'))}")
+
                 if response and response.get("status") == "success" and response.get("data"):
                     data = response["data"]
 
