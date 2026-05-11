@@ -11,7 +11,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-NIFTY_INDEX_SECURITY_ID = "26000"
+NIFTY_INDEX_SECURITY_ID = "13"
 INSTRUMENT_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
 RECONNECT_INTERVAL = 30
 

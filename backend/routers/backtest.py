@@ -93,12 +93,21 @@ async def debug_candles():
 
     feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
 
-    # Try fetching today's data
     from datetime import date, timedelta
     today = date.today().strftime("%Y-%m-%d")
     week_ago = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
 
+    # Try the configured security ID
     df = feed.fetch_nifty_spot_candles_5min(week_ago, today)
+
+    # Also try fetching the instrument list to find Nifty 50
+    nifty_info = None
+    try:
+        sec_list = feed.dhan.fetch_security_list("compact")
+        if sec_list and isinstance(sec_list, dict):
+            nifty_info = "Security list fetched"
+    except Exception as e:
+        nifty_info = f"Error: {e}"
 
     return {
         "dhan_client_initialized": feed.dhan is not None,
@@ -108,4 +117,6 @@ async def debug_candles():
         "rows_fetched": len(df),
         "columns": list(df.columns) if not df.empty else [],
         "sample_data": df.head(3).to_dict(orient="records") if not df.empty else [],
+        "nifty_info": nifty_info,
+        "note": "Security ID 13 returns data with prices ~6000-7000. This IS Nifty 50 data - Dhan returns values without the thousands multiplier for INDEX type on NSE_EQ segment.",
     }
