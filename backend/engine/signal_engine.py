@@ -101,6 +101,14 @@ class SignalEngine:
         signal = "HOLD"
         reason = "No crossover or conflicting conditions"
 
+        # Log indicator values for debugging
+        if bullish_crossover or bearish_crossover:
+            import logging
+            logging.getLogger(__name__).info(
+                f"Crossover detected! bullish={bullish_crossover}, bearish={bearish_crossover}, "
+                f"RSI={rsi_val:.1f}, price={price:.2f}, VWAP={vwap_val:.2f}"
+            )
+
         if bullish_crossover and rsi_val > rsi_upper and price > vwap_val:
             signal = "BUY_CALL"
             reason = (
