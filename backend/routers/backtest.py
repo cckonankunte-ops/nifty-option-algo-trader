@@ -79,3 +79,29 @@ async def get_result(result_id: int, db=Depends(get_db)):
         "equity_curve_data": result.equity_curve_data,
         "trade_log": result.trade_log,
     }
+
+
+@router.get("/debug-candles")
+async def debug_candles():
+    """Debug endpoint — test if Dhan API returns candle data."""
+    from backend.data.dhan_feed import DhanFeed, NIFTY_INDEX_SECURITY_ID
+    from backend.config import settings
+
+    feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
+
+    # Try fetching today's data
+    from datetime import date, timedelta
+    today = date.today().strftime("%Y-%m-%d")
+    week_ago = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    df = feed.fetch_nifty_spot_candles_5min(week_ago, today)
+
+    return {
+        "dhan_client_initialized": feed.dhan is not None,
+        "security_id_used": NIFTY_INDEX_SECURITY_ID,
+        "from_date": week_ago,
+        "to_date": today,
+        "rows_fetched": len(df),
+        "columns": list(df.columns) if not df.empty else [],
+        "sample_data": df.head(3).to_dict(orient="records") if not df.empty else [],
+    }
