@@ -17,6 +17,8 @@ class BacktestRequest(BaseModel):
     signal_mode: str = Field(default="SIMPLE_5MIN")
     adx_period: int = Field(default=14)
     adx_threshold: int = Field(default=25)
+    rsi_upper: int = Field(default=50)
+    rsi_lower: int = Field(default=50)
 
 
 @router.post("/run")
@@ -31,6 +33,8 @@ async def run_backtest(request: BacktestRequest):
         signal_mode=request.signal_mode,
         adx_period=request.adx_period,
         adx_threshold=request.adx_threshold,
+        rsi_upper=request.rsi_upper,
+        rsi_lower=request.rsi_lower,
     )
 
     return result
