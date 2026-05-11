@@ -147,6 +147,20 @@ class BacktestRunner:
 
             signal = result["signal"]
 
+            # Log every signal check for debugging
+            indicators = result.get("indicators", {})
+            logger.debug(
+                f"Candle {i}: signal={signal}, "
+                f"ema_fast={indicators.get('ema_fast')}, ema_slow={indicators.get('ema_slow')}, "
+                f"rsi={indicators.get('rsi')}, price={indicators.get('price')}, vwap={indicators.get('vwap')}"
+            )
+
+            # Log first few signals at INFO level for visibility
+            if i < lookback + 5 or signal != "HOLD":
+                logger.info(
+                    f"[Backtest] Candle {i}/{len(candles_5min)}: signal={signal}, reason={result.get('reason', '')[:80]}"
+                )
+
             # Track ADX filtered signals
             if signal_mode == "ADVANCED_5MIN_1MIN_ADX" and "filtered" in result.get("reason", "").lower():
                 adx_filtered_count += 1
