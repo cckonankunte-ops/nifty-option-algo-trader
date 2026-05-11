@@ -45,8 +45,16 @@ class DhanFeed:
 
         # Dhan client for REST calls
         try:
-            from dhanhq import dhanhq
-            self.dhan = dhanhq(client_id, access_token)
+            from dhanhq import dhanhq as DhanHQ
+            self.dhan = DhanHQ({"access_token": access_token, "client_id": client_id})
+        except TypeError:
+            # Fallback for older SDK versions
+            try:
+                from dhanhq import dhanhq as DhanHQ
+                self.dhan = DhanHQ(client_id, access_token)
+            except Exception as e:
+                logger.error(f"Failed to initialize Dhan client (fallback): {e}")
+                self.dhan = None
         except Exception as e:
             logger.error(f"Failed to initialize Dhan client: {e}")
             self.dhan = None

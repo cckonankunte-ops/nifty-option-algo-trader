@@ -26,8 +26,14 @@ class OrderExecutor:
         self.dhan = None
         if not self.paper_mode:
             try:
-                from dhanhq import dhanhq
-                self.dhan = dhanhq(settings.DHAN_CLIENT_ID, settings.DHAN_ACCESS_TOKEN)
+                from dhanhq import dhanhq as DhanHQ
+                self.dhan = DhanHQ({"access_token": settings.DHAN_ACCESS_TOKEN, "client_id": settings.DHAN_CLIENT_ID})
+            except TypeError:
+                try:
+                    from dhanhq import dhanhq as DhanHQ
+                    self.dhan = DhanHQ(settings.DHAN_CLIENT_ID, settings.DHAN_ACCESS_TOKEN)
+                except Exception as e:
+                    logger.error(f"Failed to initialize Dhan order client (fallback): {e}")
             except Exception as e:
                 logger.error(f"Failed to initialize Dhan order client: {e}")
 
