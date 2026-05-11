@@ -3,6 +3,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,9 @@ from backend.config import settings
 from backend.database import Base, engine
 from backend.websocket_manager import ws_manager
 from backend.routers import trading, backtest, config, history, settings as settings_router
+
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
 
 # Configure logging
 log_handler = RotatingFileHandler("logs/app.log", maxBytes=10_000_000, backupCount=5)
