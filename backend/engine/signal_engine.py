@@ -75,11 +75,12 @@ class SignalEngine:
         """MODE A: Simple 5-min signal logic."""
         df = self._compute_indicators(candles_5min)
 
-        if len(df) < 2:
+        if len(df) < 3:
             return self._build_response("HOLD", "Insufficient candle data", df)
 
         curr = df.iloc[-1]
         prev = df.iloc[-2]
+        prev2 = df.iloc[-3]
 
         ema_fast_val = curr["ema_fast"]
         ema_slow_val = curr["ema_slow"]
@@ -90,71 +91,71 @@ class SignalEngine:
         rsi_upper = getattr(self.config, "rsi_upper", 60)
         rsi_lower = getattr(self.config, "rsi_lower", 40)
 
-        # Check for EMA crossover
-        bullish_crossover = (
-            ema_fast_val > ema_slow_val and prev["ema_fast"] <= prev["ema_slow"]
-        )
-        bearish_crossover = (
-            ema_fast_val < ema_slow_val and prev["ema_fast"] >= prev["ema_slow"]
-        )
-
-        # Also check trend continuation (EMA aligned + RSI confirms)
-        # This generates more signals — enters on pullback recovery within a trend
-        bullish_trend = ema_fast_val > ema_slow_val
-        bearish_trend = ema_fast_val < ema_slow_val
-
-        # RSI momentum: check if RSI just crossed above/below threshold
-        prev_rsi = prev["rsi"] if pd.notna(prev["rsi"]) else 50
-        rsi_bullish_cross = rsi_val > rsi_upper and prev_rsi <= rsi_upper
-        rsi_bearish_cross = rsi_val < rsi_lower and prev_rsi >= rsi_lower
+        # Skip if indicators not computed yet
+        if pd.isna(ema_fast_val) or pd.isna(ema_slow_val) or pd.isna(rsi_val):
+            return self._build_response("HOLD", "Indicators not ready", df)
 
         signal = "HOLD"
-        reason = "No crossover or conflicting conditions"
+        reason = "No signal conditions met"
 
-        # Log indicator values for debugging
-        if bullish_crossover or bearish_crossover or rsi_bullish_cross or rsi_bearish_cross:
-            import logging
-            logging.getLogger(__name__).info(
-                f"Crossover detected! bullish={bullish_crossover}, bearish={bearish_crossover}, "
-                f"RSI={rsi_val:.1f}, price={price:.2f}, VWAP={vwap_val:.2f}"
-            )
+        # --- BUY CALL conditions (any ONE of these triggers entry) ---
 
-        # For daily candles, VWAP is cumulative and less meaningful
-        # Check if data appears to be daily (few candles) vs intraday (many candles)
-        is_daily = len(df) < 200  # Heuristic: daily data has fewer rows
+        # 1. EMA crossover: EMA fast just crossed above EMA slow
+        bullish_crossover = (ema_fast_val > ema_slow_val and prev["ema_fast"] <= prev["ema_slow"])
 
-        # Signal 1: EMA crossover (original)
-        if bullish_crossover and rsi_val > rsi_upper:
-            if is_daily or price > vwap_val:
-                signal = "BUY_CALL"
-                reason = (
-                    f"EMA{getattr(self.config, 'ema_fast', 9)} crossed above "
-                    f"EMA{getattr(self.config, 'ema_slow', 21)}, "
-                    f"RSI={rsi_val:.1f} > {rsi_upper}, price={price:.2f}"
-                )
-        elif bearish_crossover and rsi_val < rsi_lower:
-            if is_daily or price < vwap_val:
-                signal = "BUY_PUT"
-                reason = (
-                    f"EMA{getattr(self.config, 'ema_fast', 9)} crossed below "
-                    f"EMA{getattr(self.config, 'ema_slow', 21)}, "
-                    f"RSI={rsi_val:.1f} < {rsi_lower}, price={price:.2f}"
-                )
-        # Signal 2: Trend continuation — RSI crosses threshold while EMAs aligned
-        elif bullish_trend and rsi_bullish_cross and (is_daily or price > vwap_val):
+        # 2. Trend + momentum: EMAs aligned bullish + RSI above threshold + price above VWAP
+        bullish_trend_momentum = (
+            ema_fast_val > ema_slow_val
+            and rsi_val > rsi_upper
+            and price > vwap_val
+        )
+
+        # 3. Pullback recovery: price was below VWAP, now closes above it while EMAs bullish
+        pullback_recovery_bull = (
+            ema_fast_val > ema_slow_val
+            and prev["close"] < prev["vwap"]
+            and price > vwap_val
+            and rsi_val > 50
+        )
+
+        # --- BUY PUT conditions ---
+
+        # 1. EMA crossover bearish
+        bearish_crossover = (ema_fast_val < ema_slow_val and prev["ema_fast"] >= prev["ema_slow"])
+
+        # 2. Trend + momentum bearish
+        bearish_trend_momentum = (
+            ema_fast_val < ema_slow_val
+            and rsi_val < rsi_lower
+            and price < vwap_val
+        )
+
+        # 3. Pullback recovery bearish
+        pullback_recovery_bear = (
+            ema_fast_val < ema_slow_val
+            and prev["close"] > prev["vwap"]
+            and price < vwap_val
+            and rsi_val < 50
+        )
+
+        # Generate signal
+        if bullish_crossover or bullish_trend_momentum or pullback_recovery_bull:
             signal = "BUY_CALL"
-            reason = (
-                f"Trend continuation: EMA{getattr(self.config, 'ema_fast', 9)} > "
-                f"EMA{getattr(self.config, 'ema_slow', 21)}, "
-                f"RSI crossed above {rsi_upper} ({rsi_val:.1f}), price={price:.2f}"
-            )
-        elif bearish_trend and rsi_bearish_cross and (is_daily or price < vwap_val):
+            if bullish_crossover:
+                reason = f"EMA crossover bullish, RSI={rsi_val:.1f}, price={price:.2f}"
+            elif pullback_recovery_bull:
+                reason = f"VWAP pullback recovery, RSI={rsi_val:.1f}, price={price:.2f} > VWAP={vwap_val:.2f}"
+            else:
+                reason = f"Trend momentum, EMA aligned, RSI={rsi_val:.1f} > {rsi_upper}, price={price:.2f} > VWAP"
+
+        elif bearish_crossover or bearish_trend_momentum or pullback_recovery_bear:
             signal = "BUY_PUT"
-            reason = (
-                f"Trend continuation: EMA{getattr(self.config, 'ema_fast', 9)} < "
-                f"EMA{getattr(self.config, 'ema_slow', 21)}, "
-                f"RSI crossed below {rsi_lower} ({rsi_val:.1f}), price={price:.2f}"
-            )
+            if bearish_crossover:
+                reason = f"EMA crossover bearish, RSI={rsi_val:.1f}, price={price:.2f}"
+            elif pullback_recovery_bear:
+                reason = f"VWAP pullback recovery, RSI={rsi_val:.1f}, price={price:.2f} < VWAP={vwap_val:.2f}"
+            else:
+                reason = f"Trend momentum, EMA aligned, RSI={rsi_val:.1f} < {rsi_lower}, price={price:.2f} < VWAP"
 
         return self._build_response(signal, reason, df)
 
