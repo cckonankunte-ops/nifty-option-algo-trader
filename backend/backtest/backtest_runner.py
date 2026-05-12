@@ -130,8 +130,8 @@ class BacktestRunner:
             if total_min < 585 or total_min > 915:  # 9:45=585, 15:15=915
                 continue
 
-            # Square off at 3:00 PM
-            if position and total_min >= 900:
+            # Square off at 3:15 PM (no new trades after 3:00 PM, square off at 3:15)
+            if position and total_min >= 915:
                 spot_chg = current_price - position["spot_at_entry"]
                 d = 0.5 if position.get("option_type") == "CALL" else -0.5
                 exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
@@ -251,6 +251,10 @@ class BacktestRunner:
             if signal in ("BUY_CALL", "BUY_PUT"):
                 # Check daily loss cap — don't trade if already lost too much today
                 if daily_pnl_today <= -daily_cap_amount:
+                    continue
+
+                # No new entries after 3:00 PM (only square-off allowed)
+                if total_min >= 900:
                     continue
 
                 # Enter position using OPTION PREMIUM (not index price)
