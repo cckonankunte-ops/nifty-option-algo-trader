@@ -79,6 +79,11 @@ class TradingEngine:
             sig_config.rsi_lower = config.get("rsi_lower", 45)
             sig_config.adx_period = 14
             sig_config.adx_threshold = 25
+            sig_config.sl_percent = config.get("sl_percent", 20)
+            sig_config.trailing_sl_trigger = 4.0
+            sig_config.trailing_sl_trail = 2.0
+            sig_config.daily_loss_cap_percent = 6.0
+            sig_config.fund_per_trade_percent = 10.0
             self.signal_engine = SignalEngine(sig_config)
 
             # Risk Manager
