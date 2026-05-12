@@ -118,13 +118,33 @@ export default function Backtest() {
           {!result && <p className="text-gray-500 text-sm">Run a backtest to see results</p>}
           {result && (
             <div className="space-y-4">
+              {/* Total P&L highlight */}
+              <div className="flex items-center gap-4 pb-3 border-b border-gray-700">
+                <div>
+                  <span className="text-gray-400 text-xs">Total P&L</span>
+                  <div className={`text-2xl font-bold ${(result.metrics.final_capital - result.metrics.initial_capital) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ₹{((result.metrics.final_capital || 0) - (result.metrics.initial_capital || 0)).toLocaleString('en-IN', {maximumFractionDigits: 0})}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs">Return</span>
+                  <div className={`text-2xl font-bold ${result.metrics.total_return_percent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {result.metrics.total_return_percent}%
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs">Capital</span>
+                  <div className="text-lg text-white">₹{(result.metrics.initial_capital || 0).toLocaleString('en-IN')} → ₹{(result.metrics.final_capital || 0).toLocaleString('en-IN', {maximumFractionDigits: 0})}</div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-3 gap-3 text-sm">
-                <div><span className="text-gray-400">Return:</span> <span className={result.metrics.total_return_percent >= 0 ? 'text-green-400' : 'text-red-400'}>{result.metrics.total_return_percent}%</span></div>
                 <div><span className="text-gray-400">Win Rate:</span> {result.metrics.win_rate}%</div>
                 <div><span className="text-gray-400">Trades:</span> {result.metrics.total_trades}</div>
                 <div><span className="text-gray-400">Max DD:</span> {result.metrics.max_drawdown}%</div>
                 <div><span className="text-gray-400">Sharpe:</span> {result.metrics.sharpe_ratio}</div>
                 <div><span className="text-gray-400">Interval:</span> {result.metrics.candle_interval || 'daily'}</div>
+                <div><span className="text-gray-400">Lot Size:</span> 65 × {result.metrics.total_trades > 0 ? '1 lot' : '0'}</div>
                 {result.metrics.adx_filtered_count > 0 && (
                   <div><span className="text-gray-400">ADX Filtered:</span> {result.metrics.adx_filtered_count}</div>
                 )}
