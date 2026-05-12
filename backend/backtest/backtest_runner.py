@@ -80,6 +80,9 @@ class BacktestRunner:
 
         # Track daily state for intraday square-off
         current_day = None
+        daily_pnl_today = 0.0
+        daily_cap_amount = initial_capital * 0.06  # 6% daily loss cap
+
         # For intraday options, use appropriate SL
         # Options are volatile — 20% SL on premium is standard
         if candle_interval in ("5", "1"):
@@ -111,6 +114,7 @@ class BacktestRunner:
                     exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
                     pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
+                    daily_pnl_today += pnl
                     trade_log.append({
                         **position,
                         "exit_price": round(exit_opt_price, 2),
@@ -120,6 +124,7 @@ class BacktestRunner:
                     })
                     position = None
                 current_day = candle_day
+                daily_pnl_today = 0.0  # Reset daily P&L for new day
 
             # Skip candles outside trading hours (before 9:45 AM or after 3:15 PM)
             if total_min < 585 or total_min > 915:  # 9:45=585, 15:15=915
@@ -132,6 +137,7 @@ class BacktestRunner:
                 exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
                 pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
                 capital += pnl
+                daily_pnl_today += pnl
                 trade_log.append({
                     **position,
                     "exit_price": round(exit_opt_price, 2),
@@ -167,6 +173,7 @@ class BacktestRunner:
                 if current_option_price <= position["sl_price"]:
                     pnl = (current_option_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
+                    daily_pnl_today += pnl
                     trade_log.append({
                         **position,
                         "exit_price": position["sl_price"],
@@ -190,6 +197,7 @@ class BacktestRunner:
                     if current_option_price <= position["sl_price"]:
                         pnl = (current_option_price - position["entry_price"]) * position["quantity"]
                         capital += pnl
+                        daily_pnl_today += pnl
                         trade_log.append({
                             **position,
                             "exit_price": current_option_price,
@@ -236,6 +244,10 @@ class BacktestRunner:
                 adx_filtered_count += 1
 
             if signal in ("BUY_CALL", "BUY_PUT"):
+                # Check daily loss cap — don't trade if already lost too much today
+                if daily_pnl_today <= -daily_cap_amount:
+                    continue
+
                 # Enter position using OPTION PREMIUM (not index price)
                 LOT_SIZE = 65  # Nifty option lot size
                 option_type = "CALL" if signal == "BUY_CALL" else "PUT"
