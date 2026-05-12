@@ -12,7 +12,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 NIFTY_INDEX_SECURITY_ID = "13"  # Nifty 50 Index (daily data only)
-NIFTY_FUTURES_SECURITY_ID = "26009"  # Nifty 50 current month futures (intraday data)
+NIFTY_FUTURES_SECURITY_ID = "61093"  # NIFTY-Jul2026-FUT (intraday data)
 INSTRUMENT_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
 RECONNECT_INTERVAL = 30
 
