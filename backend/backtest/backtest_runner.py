@@ -1,7 +1,7 @@
 """Backtest Runner — runs historical strategy backtests."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from unittest.mock import MagicMock
 
