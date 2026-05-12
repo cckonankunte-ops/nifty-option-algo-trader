@@ -186,20 +186,33 @@ export default function Backtest() {
 
               {/* Trade Log */}
               {result.trade_log?.length > 0 && (
-                <div className="max-h-48 overflow-y-auto">
+                <div className="max-h-64 overflow-y-auto">
                   <table className="w-full text-xs">
-                    <thead className="text-gray-400">
-                      <tr><th>Time</th><th>Signal</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Reason</th></tr>
+                    <thead className="text-gray-400 sticky top-0 bg-gray-800">
+                      <tr>
+                        <th className="text-left py-1">Entry Time</th>
+                        <th className="text-left">Exit Time</th>
+                        <th>Signal</th>
+                        <th>Strike</th>
+                        <th>Qty</th>
+                        <th>Entry ₹</th>
+                        <th>Exit ₹</th>
+                        <th>P&L</th>
+                        <th>Reason</th>
+                      </tr>
                     </thead>
                     <tbody>
                       {result.trade_log.map((t, i) => (
                         <tr key={i} className="border-t border-gray-700">
-                          <td className="py-1">{t.entry_time?.slice(0, 16)}</td>
-                          <td>{t.signal}</td>
-                          <td>{t.entry_price?.toFixed(1)}</td>
-                          <td>{t.exit_price?.toFixed(1)}</td>
-                          <td className={t.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>{t.pnl?.toFixed(0)}</td>
-                          <td>{t.exit_reason}</td>
+                          <td className="py-1">{t.entry_time?.slice(11, 16) || t.entry_time?.slice(0, 16)}</td>
+                          <td>{t.exit_time?.slice(11, 16) || t.exit_time?.slice(0, 16)}</td>
+                          <td className="text-center">{t.signal === 'BUY_CALL' ? 'CE' : 'PE'}</td>
+                          <td className="text-center">{t.strike || '-'}</td>
+                          <td className="text-center">{t.quantity || 65}</td>
+                          <td className="text-center">{t.entry_price?.toFixed(1)}</td>
+                          <td className="text-center">{t.exit_price?.toFixed(1)}</td>
+                          <td className={`text-center ${t.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{t.pnl?.toFixed(0)}</td>
+                          <td className="text-center">{t.exit_reason}</td>
                         </tr>
                       ))}
                     </tbody>
