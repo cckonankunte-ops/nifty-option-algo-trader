@@ -102,15 +102,17 @@ class OrderExecutor:
 
     def verify_connection(self) -> bool:
         """Verify Dhan API connectivity by calling get_fund_limits."""
-        if self.paper_mode:
-            return True  # Paper mode always "connected"
-
         try:
-            if self.dhan is None:
-                from dhanhq import dhanhq
-                self.dhan = dhanhq(settings.DHAN_CLIENT_ID, settings.DHAN_ACCESS_TOKEN)
+            # Always verify against Dhan API (even in paper mode)
+            from dhanhq import DhanContext, dhanhq as DhanHQ
+            try:
+                dhan_context = DhanContext(settings.DHAN_CLIENT_ID, settings.DHAN_ACCESS_TOKEN)
+                dhan = DhanHQ(dhan_context)
+            except ImportError:
+                from dhanhq import dhanhq as DhanHQ
+                dhan = DhanHQ(settings.DHAN_CLIENT_ID, settings.DHAN_ACCESS_TOKEN)
 
-            response = self.dhan.get_fund_limits()
+            response = dhan.get_fund_limits()
             if response and response.get("status") == "success":
                 logger.info("Dhan broker connection verified")
                 return True

@@ -45,9 +45,10 @@ async def broker_status():
     """Check broker connection status."""
     return {
         "broker": "dhan",
-        "connected": bool(settings.DHAN_ACCESS_TOKEN),
         "client_id_configured": bool(settings.DHAN_CLIENT_ID),
+        "token_configured": bool(settings.DHAN_ACCESS_TOKEN),
         "paper_mode": settings.DHAN_SANDBOX_MODE,
+        "note": "Use 'Test Connection' button to verify token is valid",
     }
 
 
