@@ -221,7 +221,12 @@ class BacktestRunner:
             if signal in ("BUY_CALL", "BUY_PUT"):
                 # Enter position
                 entry_price = current_price
-                quantity = 25  # 1 lot for backtest simplicity
+                # Calculate quantity based on capital (25% of capital / price, rounded to lot size 25)
+                fund_per_trade = capital * 0.25  # 25% of available capital
+                lots = int(fund_per_trade / (entry_price * 25))
+                if lots < 1:
+                    lots = 1
+                quantity = lots * 25
                 sl_price = entry_price * (1 - sl_pct / 100)
 
                 trigger_type = "direct_signal" if signal_mode == "SIMPLE_5MIN" else "1min_confirmed"
