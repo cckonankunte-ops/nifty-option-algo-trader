@@ -109,8 +109,7 @@ class TradingEngine:
             self._loop_thread.start()
 
             logger.info(f"Trading engine started: mode={config.get('trading_mode', 'paper')}, fund={fund_amount}")
-            _broadcast("ENGINE_STATUS", {"status": "running", "mode": config.get("trading_mode", "paper")}))
-
+            _broadcast("ENGINE_STATUS", {"status": "running", "mode": config.get("trading_mode", "paper")})
             return {"status": "started"}
 
         except Exception as e:
@@ -171,7 +170,7 @@ class TradingEngine:
             except Exception as e:
                 logger.error(f"Trading loop error: {e}")
                 try:
-                    _broadcast("ERROR", {"message": str(e)}))
+                    _broadcast("ERROR", {"message": str(e)})
                 except Exception:
                     pass
 
@@ -346,7 +345,7 @@ class TradingEngine:
         try:
             _broadcast("SL_HIT" if "SL" in reason else "ORDER_FILLED", {
                 "reason": reason, "pnl": round(pnl, 2), "exit_price": round(exit_price, 2)
-            }))
+            })
         except Exception:
             pass
 
