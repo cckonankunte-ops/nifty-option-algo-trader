@@ -240,6 +240,114 @@ class DhanFeed:
                 logger.error(f"REST quote fallback failed: {e}")
         return price
 
+    # ─── Expired Options Data ────────────────────────────────────────
+
+    def fetch_expired_option_data(
+        self,
+        option_type: str,
+        from_date: str,
+        to_date: str,
+        interval: str = "5",
+        strike: str = "ATM",
+        expiry_flag: str = "WEEK",
+        expiry_code: int = 1,
+    ) -> pd.DataFrame:
+        """
+        Fetch expired option premium data (OHLC + spot) from Dhan.
+
+        Args:
+            option_type: "CALL" or "PUT"
+            from_date: "YYYY-MM-DD"
+            to_date: "YYYY-MM-DD" (max 30 days per call)
+            interval: "1", "5", "15", "25", "60"
+            strike: "ATM", "ATM+1", "ATM-1", etc.
+            expiry_flag: "WEEK" or "MONTH"
+            expiry_code: 1 = current expiry, 2 = next, etc.
+
+        Returns:
+            DataFrame with: timestamp, open, high, low, close, volume, spot
+        """
+        if self.dhan is None:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume", "spot"])
+
+        all_candles = []
+        start = datetime.strptime(from_date, "%Y-%m-%d")
+        end = datetime.strptime(to_date, "%Y-%m-%d")
+
+        # API supports max 30 days per call
+        current_start = start
+        while current_start < end:
+            current_end = min(current_start + timedelta(days=29), end)
+
+            try:
+                import time
+                time.sleep(1)  # Rate limit
+
+                response = self.dhan.expired_options_data(
+                    security_id=NIFTY_INDEX_SECURITY_ID,
+                    exchange_segment="NSE_FNO",
+                    instrument_type="OPTIDX",
+                    expiry_flag=expiry_flag,
+                    expiry_code=expiry_code,
+                    strike=strike,
+                    drv_option_type=option_type,
+                    required_data=["open", "high", "low", "close", "volume", "spot"],
+                    from_date=current_start.strftime("%Y-%m-%d"),
+                    to_date=current_end.strftime("%Y-%m-%d"),
+                    interval=interval,
+                )
+
+                if response and response.get("data"):
+                    data = response["data"]
+                    # Response has "ce" or "pe" key
+                    option_data = data.get("ce") if option_type == "CALL" else data.get("pe")
+
+                    if option_data and option_data.get("open"):
+                        timestamps = option_data.get("timestamp", [])
+                        opens = option_data.get("open", [])
+                        highs = option_data.get("high", [])
+                        lows = option_data.get("low", [])
+                        closes = option_data.get("close", [])
+                        volumes = option_data.get("volume", [0] * len(opens))
+                        spots = option_data.get("spot", [0] * len(opens))
+
+                        logger.info(f"Expired options: got {len(opens)} candles ({option_type}, {strike}) for {current_start.date()} to {current_end.date()}")
+
+                        for i in range(len(opens)):
+                            all_candles.append({
+                                "timestamp": timestamps[i] if i < len(timestamps) else None,
+                                "open": opens[i],
+                                "high": highs[i],
+                                "low": lows[i],
+                                "close": closes[i],
+                                "volume": volumes[i] if i < len(volumes) else 0,
+                                "spot": spots[i] if i < len(spots) else 0,
+                            })
+                    else:
+                        logger.warning(f"No {option_type} data for {current_start.date()} to {current_end.date()}")
+                else:
+                    logger.warning(f"Expired options API returned no data: {response.get('remarks', '') if response else ''}")
+
+            except Exception as e:
+                logger.error(f"Error fetching expired options {current_start.date()} to {current_end.date()}: {e}")
+
+            current_start = current_end + timedelta(days=1)
+
+        if not all_candles:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume", "spot"])
+
+        df = pd.DataFrame(all_candles)
+        if len(df) > 0:
+            sample = df["timestamp"].iloc[0]
+            if isinstance(sample, (int, float)) and sample > 1_000_000_000:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+            else:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+            df = df.dropna(subset=["timestamp"])
+            df = df.sort_values("timestamp").reset_index(drop=True)
+
+        return df
+
     # ─── REST Historical Candles ─────────────────────────────────────
 
     def fetch_nifty_spot_candles_5min(self, from_date: str, to_date: str) -> pd.DataFrame:

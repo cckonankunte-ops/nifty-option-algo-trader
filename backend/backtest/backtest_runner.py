@@ -80,9 +80,10 @@ class BacktestRunner:
 
         # Track daily state for intraday square-off
         current_day = None
-        # For intraday, use tighter SL (0.5% instead of 3% which is too wide for index)
+        # For intraday options, use appropriate SL
+        # Options are volatile — 20% SL on premium is standard
         if candle_interval in ("5", "1"):
-            sl_pct = min(sl_pct, 0.5)  # 0.5% SL for intraday (~120 points on Nifty)
+            sl_pct = max(sl_pct, 20)  # 20% SL on option premium
 
         for i in range(lookback, len(candles_5min)):
             window_5min = candles_5min.iloc[max(0, i - lookback):i + 1].copy()
@@ -104,14 +105,17 @@ class BacktestRunner:
             # New day detected — square off any open position from previous day
             if candle_day and candle_day != current_day:
                 if position and current_day is not None:
-                    # End-of-day square off
-                    pnl = (current_price - position["entry_price"]) * position["quantity"]
+                    # End-of-day square off — calculate option exit price
+                    spot_chg = current_price - position["spot_at_entry"]
+                    d = 0.5 if position.get("option_type") == "CALL" else -0.5
+                    exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+                    pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
                     trade_log.append({
                         **position,
-                        "exit_price": current_price,
+                        "exit_price": round(exit_opt_price, 2),
                         "exit_time": str(candle_time),
-                        "pnl": pnl,
+                        "pnl": round(pnl, 2),
                         "exit_reason": "SQUARE_OFF",
                     })
                     position = None
@@ -123,13 +127,16 @@ class BacktestRunner:
 
             # Square off at 3:00 PM
             if position and total_min >= 900:
-                pnl = (current_price - position["entry_price"]) * position["quantity"]
+                spot_chg = current_price - position["spot_at_entry"]
+                d = 0.5 if position.get("option_type") == "CALL" else -0.5
+                exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+                pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
                 capital += pnl
                 trade_log.append({
                     **position,
-                    "exit_price": current_price,
+                    "exit_price": round(exit_opt_price, 2),
                     "exit_time": str(candle_time),
-                    "pnl": pnl,
+                    "pnl": round(pnl, 2),
                     "exit_reason": "SQUARE_OFF",
                 })
                 position = None
@@ -138,7 +145,10 @@ class BacktestRunner:
             # Update equity curve
             unrealized = 0
             if position:
-                unrealized = (current_price - position["entry_price"]) * position["quantity"]
+                spot_chg = current_price - position["spot_at_entry"]
+                d = 0.5 if position["option_type"] == "CALL" else -0.5
+                opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+                unrealized = (opt_price - position["entry_price"]) * position["quantity"]
             equity_curve.append({
                 "timestamp": str(current_candle["timestamp"]),
                 "value": capital + unrealized,
@@ -146,9 +156,16 @@ class BacktestRunner:
 
             # Check exit conditions for open position
             if position:
-                # Check stop loss
-                if current_price <= position["sl_price"]:
-                    pnl = (current_price - position["entry_price"]) * position["quantity"]
+                # Simulate option premium based on spot movement
+                # ATM option delta ≈ 0.5, so option moves ~50% of spot movement
+                spot_change = current_price - position["spot_at_entry"]
+                delta = 0.5 if position["option_type"] == "CALL" else -0.5
+                current_option_price = position["entry_price"] + (spot_change * delta)
+                current_option_price = max(current_option_price, 1)  # Option can't go below ₹1
+
+                # Check stop loss on option premium
+                if current_option_price <= position["sl_price"]:
+                    pnl = (current_option_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
                     trade_log.append({
                         **position,
@@ -160,9 +177,9 @@ class BacktestRunner:
                     position = None
                     continue
 
-                # Check trailing SL
-                if current_price > position.get("peak_price", position["entry_price"]):
-                    position["peak_price"] = current_price
+                # Check trailing SL on option premium
+                if current_option_price > position.get("peak_price", position["entry_price"]):
+                    position["peak_price"] = current_option_price
 
                 profit_pct = ((position["peak_price"] - position["entry_price"]) / position["entry_price"]) * 100
                 if profit_pct >= trailing_sl_trigger:
@@ -170,12 +187,12 @@ class BacktestRunner:
                     if trailing_sl > position["sl_price"]:
                         position["sl_price"] = trailing_sl
 
-                    if current_price <= position["sl_price"]:
-                        pnl = (current_price - position["entry_price"]) * position["quantity"]
+                    if current_option_price <= position["sl_price"]:
+                        pnl = (current_option_price - position["entry_price"]) * position["quantity"]
                         capital += pnl
                         trade_log.append({
                             **position,
-                            "exit_price": position["sl_price"],
+                            "exit_price": current_option_price,
                             "exit_time": str(current_candle["timestamp"]),
                             "pnl": pnl,
                             "exit_reason": "TRAILING_SL",
@@ -219,24 +236,29 @@ class BacktestRunner:
                 adx_filtered_count += 1
 
             if signal in ("BUY_CALL", "BUY_PUT"):
-                # Enter position
-                entry_price = current_price
-                # Calculate quantity based on capital (25% of capital / price, rounded to lot size)
-                LOT_SIZE = 75  # Nifty lot size (75 as of 2024)
-                fund_per_trade = capital * 0.25  # 25% of available capital
-                lots = int(fund_per_trade / (entry_price * LOT_SIZE))
-                if lots < 1:
-                    lots = 1
+                # Enter position using OPTION PREMIUM (not index price)
+                LOT_SIZE = 65  # Nifty option lot size
+                option_type = "CALL" if signal == "BUY_CALL" else "PUT"
+
+                # Estimate option premium: ATM weekly option ≈ 1.5-2% of spot for entry
+                # This is a rough estimate; actual premium depends on IV, time to expiry
+                estimated_premium = current_price * 0.015  # ~1.5% of spot ≈ ₹350-400
+
+                entry_price = estimated_premium
+                fund_per_trade = capital * 0.25
+                lots = max(1, int(fund_per_trade / (entry_price * LOT_SIZE)))
                 quantity = lots * LOT_SIZE
-                sl_price = entry_price * (1 - sl_pct / 100)
+                sl_price = entry_price * (1 - sl_pct / 100)  # SL on option premium
 
                 trigger_type = "direct_signal" if signal_mode == "SIMPLE_5MIN" else "1min_confirmed"
 
                 position = {
                     "entry_price": entry_price,
+                    "spot_at_entry": current_price,
                     "entry_time": str(current_candle["timestamp"]),
                     "quantity": quantity,
                     "signal": signal,
+                    "option_type": option_type,
                     "sl_price": sl_price,
                     "peak_price": entry_price,
                     "trigger_type": trigger_type,
@@ -245,13 +267,16 @@ class BacktestRunner:
         # Close any remaining position at end
         if position:
             final_price = candles_5min.iloc[-1]["close"]
-            pnl = (final_price - position["entry_price"]) * position["quantity"]
+            spot_chg = final_price - position["spot_at_entry"]
+            d = 0.5 if position.get("option_type") == "CALL" else -0.5
+            exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+            pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
             capital += pnl
             trade_log.append({
                 **position,
-                "exit_price": final_price,
+                "exit_price": round(exit_opt_price, 2),
                 "exit_time": str(candles_5min.iloc[-1]["timestamp"]),
-                "pnl": pnl,
+                "pnl": round(pnl, 2),
                 "exit_reason": "BACKTEST_END",
             })
 
