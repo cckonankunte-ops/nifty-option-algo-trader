@@ -11,7 +11,8 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-NIFTY_INDEX_SECURITY_ID = "13"
+NIFTY_INDEX_SECURITY_ID = "13"  # Nifty 50 Index (daily data only)
+NIFTY_FUTURES_SECURITY_ID = "26009"  # Nifty 50 current month futures (intraday data)
 INSTRUMENT_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
 RECONNECT_INTERVAL = 30
 
@@ -243,17 +244,28 @@ class DhanFeed:
 
     def fetch_nifty_spot_candles_5min(self, from_date: str, to_date: str) -> pd.DataFrame:
         """
-        Fetch 5-min candles for Nifty INDEX (for signal engine EMA/RSI/VWAP).
-
-        Args:
-            from_date: "YYYY-MM-DD"
-            to_date: "YYYY-MM-DD"
+        Fetch daily candles for Nifty INDEX (for signal engine EMA/RSI/VWAP).
+        Uses daily data from index security ID.
         """
         return self._fetch_historical_range(
             security_id=NIFTY_INDEX_SECURITY_ID,
             exchange_segment="NSE_EQ",
             instrument_type="INDEX",
             interval="5",
+            from_date=from_date,
+            to_date=to_date,
+        )
+
+    def fetch_nifty_intraday(self, from_date: str, to_date: str, interval: str = "5") -> pd.DataFrame:
+        """
+        Fetch intraday candles for Nifty using Futures (current month).
+        Nifty Index doesn't have intraday data on Dhan — futures is the proxy.
+        """
+        return self._fetch_intraday_range(
+            security_id=NIFTY_FUTURES_SECURITY_ID,
+            exchange_segment="NSE_FNO",
+            instrument_type="FUTIDX",
+            interval=interval,
             from_date=from_date,
             to_date=to_date,
         )

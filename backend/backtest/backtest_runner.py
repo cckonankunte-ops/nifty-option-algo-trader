@@ -215,16 +215,15 @@ class BacktestRunner:
 
     def _fetch_candles_paginated(self, start_date: str, end_date: str, resolution: str) -> pd.DataFrame:
         """Fetch candles via Dhan. resolution: 'daily', '5', or '1'."""
-        from backend.data.dhan_feed import DhanFeed, NIFTY_INDEX_SECURITY_ID
+        from backend.data.dhan_feed import DhanFeed
         from backend.config import settings
         feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
 
         if resolution == "daily":
             return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
-        elif resolution == "5":
-            return feed._fetch_intraday_range(NIFTY_INDEX_SECURITY_ID, "NSE_EQ", "INDEX", "5", start_date, end_date)
-        elif resolution == "1":
-            return feed._fetch_intraday_range(NIFTY_INDEX_SECURITY_ID, "NSE_EQ", "INDEX", "1", start_date, end_date)
+        elif resolution in ("5", "1"):
+            # Use Nifty Futures for intraday data (index doesn't have minute data)
+            return feed.fetch_nifty_intraday(start_date, end_date, interval=resolution)
         else:
             return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
 
