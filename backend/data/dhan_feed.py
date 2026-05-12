@@ -324,6 +324,9 @@ class DhanFeed:
 
                 if response and response.get("status") == "success" and response.get("data"):
                     data = response["data"]
+                    if isinstance(data, dict):
+                        candle_count = len(data.get("open", []))
+                        logger.info(f"Intraday data keys: {list(data.keys())}, candle_count={candle_count}")
                     if isinstance(data, dict) and "open" in data:
                         timestamps = data.get("timestamp", data.get("start_Time", []))
                         opens = data.get("open", [])
