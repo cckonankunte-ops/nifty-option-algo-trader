@@ -138,11 +138,23 @@ export default function Backtest() {
           {result && (
             <div className="space-y-4">
               {/* Total P&L highlight */}
-              <div className="flex items-center gap-4 pb-3 border-b border-gray-700">
+              <div className="flex items-center gap-6 pb-3 border-b border-gray-700">
                 <div>
-                  <span className="text-gray-400 text-xs">Total P&L</span>
+                  <span className="text-gray-400 text-xs">Gross P&L</span>
                   <div className={`text-2xl font-bold ${(result.metrics.final_capital - result.metrics.initial_capital) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     ₹{((result.metrics.final_capital || 0) - (result.metrics.initial_capital || 0)).toLocaleString('en-IN', {maximumFractionDigits: 0})}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs">Charges</span>
+                  <div className="text-2xl font-bold text-orange-400">
+                    -₹{(result.metrics.total_charges || 0).toLocaleString('en-IN', {maximumFractionDigits: 0})}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-xs">Net P&L</span>
+                  <div className={`text-2xl font-bold ${(result.metrics.net_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ₹{(result.metrics.net_pnl || 0).toLocaleString('en-IN', {maximumFractionDigits: 0})}
                   </div>
                 </div>
                 <div>

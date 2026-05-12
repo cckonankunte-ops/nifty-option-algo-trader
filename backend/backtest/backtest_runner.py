@@ -375,6 +375,16 @@ class BacktestRunner:
         metrics["signal_mode"] = signal_mode
         metrics["candle_interval"] = candle_interval
 
+        # Compute total charges
+        total_charges = 0.0
+        for trade in trade_log:
+            entry_p = trade.get("entry_price", 0)
+            exit_p = trade.get("exit_price", 0)
+            qty = trade.get("quantity", 65)
+            total_charges += self._calculate_charges(entry_p, exit_p, qty)
+        metrics["total_charges"] = round(total_charges, 2)
+        metrics["net_pnl"] = round((metrics["final_capital"] - initial_capital) - total_charges, 2)
+
         # Compute daily P&L from trade log
         daily_pnl = self._compute_daily_pnl(trade_log)
 
@@ -555,6 +565,37 @@ class BacktestRunner:
             logger.error(f"Error loading futures map: {e}")
 
         return futures_map
+
+    @staticmethod
+    def _calculate_charges(entry_price: float, exit_price: float, quantity: int) -> float:
+        """
+        Calculate total trading charges for one round-trip trade (buy + sell).
+        Based on Dhan/NSE charges for Nifty options.
+        """
+        buy_turnover = entry_price * quantity
+        sell_turnover = exit_price * quantity
+        total_turnover = buy_turnover + sell_turnover
+
+        # Brokerage: ₹20 per order (buy + sell)
+        brokerage = 40.0
+
+        # STT: 0.0625% on sell side only (for options)
+        stt = sell_turnover * 0.000625
+
+        # Exchange charges (NSE): 0.0495% on both sides
+        exchange = total_turnover * 0.000495
+
+        # SEBI charges: 0.0001% on both sides
+        sebi = total_turnover * 0.000001
+
+        # Stamp duty: 0.003% on buy side only
+        stamp = buy_turnover * 0.00003
+
+        # GST: 18% on (brokerage + exchange + SEBI)
+        gst = (brokerage + exchange + sebi) * 0.18
+
+        total_charges = brokerage + stt + exchange + sebi + stamp + gst
+        return round(total_charges, 2)
 
     def _compute_daily_pnl(self, trade_log: list) -> list:
         """Compute daily P&L from trade log for bar chart visualization."""
