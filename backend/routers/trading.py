@@ -39,40 +39,41 @@ class FundRequest(BaseModel):
 @router.post("/start")
 async def start_engine(request: StartRequest):
     """Start the trading engine."""
-    _engine_state["fund_amount"] = request.fund_amount
-    _engine_state["status"] = "RUNNING"
-    _engine_state["paper_mode"] = request.trading_mode == "paper"
-    _engine_state["signal_mode"] = request.signal_mode
-    _engine_state["candle_interval"] = request.candle_interval
-    _engine_state["rsi_upper"] = request.rsi_upper
-    _engine_state["rsi_lower"] = request.rsi_lower
-    _engine_state["sl_percent"] = request.sl_percent
-    _engine_state["lot_sizing"] = request.lot_sizing
-    return {
-        "message": "Trading engine started",
-        "fund_amount": request.fund_amount,
+    from backend.engine.trading_engine import trading_engine
+
+    config = {
         "trading_mode": request.trading_mode,
-        "settings": {
-            "candle_interval": request.candle_interval,
-            "signal_mode": request.signal_mode,
-            "rsi_upper": request.rsi_upper,
-            "rsi_lower": request.rsi_lower,
-            "sl_percent": request.sl_percent,
-            "lot_sizing": request.lot_sizing,
-        }
+        "candle_interval": request.candle_interval,
+        "signal_mode": request.signal_mode,
+        "rsi_upper": request.rsi_upper,
+        "rsi_lower": request.rsi_lower,
+        "sl_percent": request.sl_percent,
+        "lot_sizing": request.lot_sizing,
     }
+
+    result = trading_engine.start(request.fund_amount, config)
+
+    _engine_state.update(trading_engine.get_status())
+    return result
 
 
 @router.post("/stop")
 async def stop_engine():
     """Stop the trading engine."""
-    _engine_state["status"] = "STOPPED"
-    return {"message": "Trading engine stopped"}
+    from backend.engine.trading_engine import trading_engine
+
+    result = trading_engine.stop()
+    _engine_state.update(trading_engine.get_status())
+    return result
 
 
 @router.get("/status")
 async def get_status():
     """Get current engine status."""
+    from backend.engine.trading_engine import trading_engine
+
+    if trading_engine.running:
+        return trading_engine.get_status()
     return _engine_state
 
 
