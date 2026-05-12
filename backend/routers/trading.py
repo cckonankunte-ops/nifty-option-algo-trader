@@ -23,6 +23,13 @@ _engine_state = {
 
 class StartRequest(BaseModel):
     fund_amount: float = Field(..., gt=10000, description="Fund must be > ₹10,000")
+    trading_mode: str = Field(default="paper", description="paper or live")
+    candle_interval: str = Field(default="5")
+    signal_mode: str = Field(default="SIMPLE_5MIN")
+    rsi_upper: int = Field(default=55)
+    rsi_lower: int = Field(default=45)
+    sl_percent: int = Field(default=20)
+    lot_sizing: str = Field(default="fixed")
 
 
 class FundRequest(BaseModel):
@@ -34,7 +41,26 @@ async def start_engine(request: StartRequest):
     """Start the trading engine."""
     _engine_state["fund_amount"] = request.fund_amount
     _engine_state["status"] = "RUNNING"
-    return {"message": "Trading engine started", "fund_amount": request.fund_amount}
+    _engine_state["paper_mode"] = request.trading_mode == "paper"
+    _engine_state["signal_mode"] = request.signal_mode
+    _engine_state["candle_interval"] = request.candle_interval
+    _engine_state["rsi_upper"] = request.rsi_upper
+    _engine_state["rsi_lower"] = request.rsi_lower
+    _engine_state["sl_percent"] = request.sl_percent
+    _engine_state["lot_sizing"] = request.lot_sizing
+    return {
+        "message": "Trading engine started",
+        "fund_amount": request.fund_amount,
+        "trading_mode": request.trading_mode,
+        "settings": {
+            "candle_interval": request.candle_interval,
+            "signal_mode": request.signal_mode,
+            "rsi_upper": request.rsi_upper,
+            "rsi_lower": request.rsi_lower,
+            "sl_percent": request.sl_percent,
+            "lot_sizing": request.lot_sizing,
+        }
+    }
 
 
 @router.post("/stop")
