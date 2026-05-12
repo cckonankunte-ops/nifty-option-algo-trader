@@ -214,57 +214,182 @@ class BacktestRunner:
         }
 
     def _fetch_candles_paginated(self, start_date: str, end_date: str, resolution: str) -> pd.DataFrame:
-        """Fetch candles. Uses Dhan for daily, yfinance for intraday (5min/1min)."""
+        """Fetch candles. Daily uses index, 5min/1min uses monthly futures contracts from Dhan."""
         if resolution == "daily":
             from backend.data.dhan_feed import DhanFeed
             from backend.config import settings
             feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
             return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
         else:
-            # Use yfinance for intraday data (Nifty 50 index)
-            return self._fetch_yfinance_intraday(start_date, end_date, resolution)
+            # Use dynamic monthly futures contracts for intraday
+            return self._fetch_monthly_futures_intraday(start_date, end_date, resolution)
 
-    def _fetch_yfinance_intraday(self, start_date: str, end_date: str, interval: str) -> pd.DataFrame:
-        """Fetch Nifty 50 intraday data from Yahoo Finance (free, no rate limits)."""
+    def _fetch_monthly_futures_intraday(self, start_date: str, end_date: str, interval: str) -> pd.DataFrame:
+        """
+        Fetch intraday data using the correct monthly Nifty futures contract for each month.
+        Jan dates → Jan futures, Feb dates → Feb futures, etc.
+        """
+        import time
+        from backend.data.dhan_feed import DhanFeed
+        from backend.config import settings
+
+        feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
+
+        # Load instrument master to find futures contracts
+        if not feed.is_master_loaded:
+            feed.load_instrument_master()
+
+        # Find all NIFTY FUTIDX contracts from master
+        nifty_futures = self._get_nifty_futures_map(feed)
+
+        if not nifty_futures:
+            logger.warning("No Nifty futures contracts found in instrument master")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        all_candles = []
+
+        # Iterate month by month
+        current = start
+        while current <= end:
+            # Find the futures contract for this month
+            month_key = (current.year, current.month)
+            security_id = nifty_futures.get(month_key)
+
+            if not security_id:
+                # Try next month's contract (near month)
+                next_month = current.month + 1 if current.month < 12 else 1
+                next_year = current.year if current.month < 12 else current.year + 1
+                security_id = nifty_futures.get((next_year, next_month))
+
+            if not security_id:
+                logger.warning(f"No futures contract found for {current.strftime('%b %Y')}")
+                # Move to next month
+                if current.month == 12:
+                    current = current.replace(year=current.year + 1, month=1, day=1)
+                else:
+                    current = current.replace(month=current.month + 1, day=1)
+                continue
+
+            # Determine date range for this month
+            month_start = max(current, start)
+            if current.month == 12:
+                month_end_date = current.replace(year=current.year + 1, month=1, day=1) - timedelta(days=1)
+            else:
+                month_end_date = current.replace(month=current.month + 1, day=1) - timedelta(days=1)
+            month_end = min(month_end_date, end)
+
+            logger.info(f"Fetching {current.strftime('%b %Y')} futures (sid={security_id}) from {month_start.strftime('%Y-%m-%d')} to {month_end.strftime('%Y-%m-%d')}")
+
+            # Fetch in 5-day chunks with rate limiting
+            chunk_start = month_start
+            while chunk_start <= month_end:
+                chunk_end = min(chunk_start + timedelta(days=4), month_end)
+
+                try:
+                    time.sleep(1)  # Rate limit
+                    from_dt = chunk_start.strftime("%Y-%m-%d") + " 09:15:00"
+                    to_dt = chunk_end.strftime("%Y-%m-%d") + " 15:30:00"
+
+                    response = feed.dhan.intraday_minute_data(
+                        security_id=security_id,
+                        exchange_segment="NSE_FNO",
+                        instrument_type="FUTIDX",
+                        from_date=from_dt,
+                        to_date=to_dt,
+                        interval=interval,
+                    )
+
+                    if response and response.get("status") == "success" and response.get("data"):
+                        data = response["data"]
+                        if isinstance(data, dict) and "open" in data:
+                            opens = data.get("open", [])
+                            if len(opens) > 0:
+                                timestamps = data.get("timestamp", [])
+                                highs = data.get("high", [])
+                                lows = data.get("low", [])
+                                closes = data.get("close", [])
+                                volumes = data.get("volume", [0] * len(opens))
+
+                                for i in range(len(opens)):
+                                    all_candles.append({
+                                        "timestamp": timestamps[i] if i < len(timestamps) else None,
+                                        "open": opens[i],
+                                        "high": highs[i],
+                                        "low": lows[i],
+                                        "close": closes[i],
+                                        "volume": volumes[i] if i < len(volumes) else 0,
+                                    })
+
+                                logger.info(f"  Got {len(opens)} candles for {chunk_start.strftime('%Y-%m-%d')} to {chunk_end.strftime('%Y-%m-%d')}")
+
+                except Exception as e:
+                    logger.error(f"Error fetching {chunk_start} to {chunk_end}: {e}")
+
+                chunk_start = chunk_end + timedelta(days=1)
+
+            # Move to next month
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                current = current.replace(month=current.month + 1, day=1)
+
+        if not all_candles:
+            logger.warning(f"No intraday futures data fetched for {start_date} to {end_date}")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        df = pd.DataFrame(all_candles)
+        logger.info(f"Total intraday candles stitched: {len(df)}")
+
+        # Convert timestamps
+        if len(df) > 0:
+            sample = df["timestamp"].iloc[0]
+            if isinstance(sample, (int, float)) and sample > 1_000_000_000:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+            else:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+            df = df.dropna(subset=["timestamp"])
+            df = df.sort_values("timestamp").reset_index(drop=True)
+
+        return df[["timestamp", "open", "high", "low", "close", "volume"]]
+
+    def _get_nifty_futures_map(self, feed) -> dict:
+        """
+        Build a map of (year, month) → security_id for NIFTY futures from instrument master.
+        """
+        import urllib.request
+        import io
+
+        futures_map = {}
+
         try:
-            import yfinance as yf
+            csv_url = "https://images.dhan.co/api-data/api-scrip-master.csv"
+            response = urllib.request.urlopen(csv_url)
+            csv_data = response.read().decode("utf-8")
+            master = pd.read_csv(io.StringIO(csv_data))
 
-            # Nifty 50 ticker on Yahoo Finance
-            ticker = yf.Ticker("^NSEI")
+            # Filter NIFTY futures only (not BANKNIFTY, FINNIFTY etc)
+            nifty_fut = master[
+                (master["SEM_EXM_EXCH_ID"] == "NSE") &
+                (master["SEM_INSTRUMENT_NAME"] == "FUTIDX") &
+                (master["SEM_TRADING_SYMBOL"].str.match(r"^NIFTY-", na=False))
+            ]
 
-            # yfinance interval format
-            yf_interval = f"{interval}m"  # "5m" or "1m"
+            for _, row in nifty_fut.iterrows():
+                try:
+                    expiry = pd.to_datetime(row["SEM_EXPIRY_DATE"])
+                    security_id = str(row["SEM_SMST_SECURITY_ID"])
+                    # Map to expiry month (contract expires in that month)
+                    futures_map[(expiry.year, expiry.month)] = security_id
+                    logger.info(f"  Found: {row['SEM_TRADING_SYMBOL']} → sid={security_id}, expiry={expiry.date()}")
+                except Exception:
+                    continue
 
-            # yfinance limits: 1m data = last 7 days, 5m data = last 60 days
-            df = ticker.history(start=start_date, end=end_date, interval=yf_interval)
-
-            if df.empty:
-                logger.warning(f"yfinance returned no data for ^NSEI ({start_date} to {end_date}, {yf_interval})")
-                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
-
-            df = df.reset_index()
-            df = df.rename(columns={"Datetime": "timestamp", "Date": "timestamp",
-                                     "Open": "open", "High": "high", "Low": "low",
-                                     "Close": "close", "Volume": "volume"})
-
-            # Keep only needed columns
-            cols = ["timestamp", "open", "high", "low", "close", "volume"]
-            for col in cols:
-                if col not in df.columns:
-                    df[col] = 0
-
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            df = df[cols].sort_values("timestamp").reset_index(drop=True)
-
-            logger.info(f"yfinance: got {len(df)} {interval}-min candles for Nifty 50")
-            return df
-
-        except ImportError:
-            logger.error("yfinance not installed. Run: pip install yfinance")
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
         except Exception as e:
-            logger.error(f"yfinance error: {e}")
-            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+            logger.error(f"Error loading futures map: {e}")
+
+        return futures_map
 
     def _compute_daily_pnl(self, trade_log: list) -> list:
         """Compute daily P&L from trade log for bar chart visualization."""
