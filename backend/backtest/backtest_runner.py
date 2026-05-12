@@ -94,12 +94,31 @@ class BacktestRunner:
             current_price = current_candle["close"]
             candle_time = pd.Timestamp(current_candle["timestamp"])
 
+            # Convert to IST string for display
+            try:
+                import pytz
+                ist = pytz.timezone("Asia/Kolkata")
+                if candle_time.tzinfo is None:
+                    candle_time_ist = candle_time.tz_localize("UTC").tz_convert(ist)
+                else:
+                    candle_time_ist = candle_time.tz_convert(ist)
+                candle_time_str = candle_time_ist.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                candle_time_str = candle_time_str[:16]
+
             # Get hour/minute for market hours check
             try:
-                hour = candle_time.hour
-                minute = candle_time.minute
+                # Dhan timestamps are epoch (UTC) — convert to IST for time checks
+                if candle_time.tzinfo is None:
+                    import pytz
+                    ist = pytz.timezone("Asia/Kolkata")
+                    candle_time_ist = candle_time.tz_localize("UTC").tz_convert(ist)
+                else:
+                    candle_time_ist = candle_time
+                hour = candle_time_ist.hour
+                minute = candle_time_ist.minute
                 total_min = hour * 60 + minute
-                candle_day = candle_time.date()
+                candle_day = candle_time_ist.date()
             except Exception:
                 # If timestamp doesn't have time info, skip filtering
                 total_min = 600  # Assume within market hours
@@ -124,7 +143,7 @@ class BacktestRunner:
                     trade_log.append({
                         **position,
                         "exit_price": round(exit_opt_price, 2),
-                        "exit_time": str(candle_time),
+                        "exit_time": candle_time_str,
                         "pnl": round(pnl, 2),
                         "exit_reason": "SQUARE_OFF",
                     })
@@ -150,7 +169,7 @@ class BacktestRunner:
                 trade_log.append({
                     **position,
                     "exit_price": round(exit_opt_price, 2),
-                    "exit_time": str(candle_time),
+                    "exit_time": candle_time_str,
                     "pnl": round(pnl, 2),
                     "exit_reason": "SQUARE_OFF",
                 })
@@ -173,7 +192,7 @@ class BacktestRunner:
                 opt_price = max(opt_price, 1)
                 unrealized = (opt_price - position["entry_price"]) * position["quantity"]
             equity_curve.append({
-                "timestamp": str(current_candle["timestamp"]),
+                "timestamp": candle_time_str,
                 "value": capital + unrealized,
             })
 
@@ -199,7 +218,7 @@ class BacktestRunner:
                     trade_log.append({
                         **position,
                         "exit_price": position["sl_price"],
-                        "exit_time": str(current_candle["timestamp"]),
+                        "exit_time": candle_time_str,
                         "pnl": pnl,
                         "exit_reason": "SL_HIT",
                     })
@@ -223,7 +242,7 @@ class BacktestRunner:
                         trade_log.append({
                             **position,
                             "exit_price": current_option_price,
-                            "exit_time": str(current_candle["timestamp"]),
+                            "exit_time": candle_time_str,
                             "pnl": pnl,
                             "exit_reason": "TRAILING_SL",
                         })
@@ -316,7 +335,7 @@ class BacktestRunner:
                     "spot_at_entry": current_price,
                     "strike": strike,
                     "delta": delta,
-                    "entry_time": str(current_candle["timestamp"]),
+                    "entry_time": candle_time_str,
                     "quantity": quantity,
                     "signal": signal,
                     "option_type": option_type,
