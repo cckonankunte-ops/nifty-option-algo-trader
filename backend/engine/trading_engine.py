@@ -24,6 +24,16 @@ IST = pytz.timezone("Asia/Kolkata")
 LOT_SIZE = 65
 
 
+def _broadcast(event_type: str, payload: dict):
+    """Safely broadcast WebSocket event from background thread."""
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(ws_manager.broadcast(event_type, payload))
+        loop.close()
+    except Exception:
+        pass  # Non-critical — UI update only
+
+
 class TradingEngine:
     """Main trading engine that runs the signal-risk-order loop."""
 
@@ -99,7 +109,7 @@ class TradingEngine:
             self._loop_thread.start()
 
             logger.info(f"Trading engine started: mode={config.get('trading_mode', 'paper')}, fund={fund_amount}")
-            asyncio.run(ws_manager.broadcast("ENGINE_STATUS", {"status": "running", "mode": config.get("trading_mode", "paper")}))
+            _broadcast("ENGINE_STATUS", {"status": "running", "mode": config.get("trading_mode", "paper")}))
 
             return {"status": "started"}
 
@@ -161,7 +171,7 @@ class TradingEngine:
             except Exception as e:
                 logger.error(f"Trading loop error: {e}")
                 try:
-                    asyncio.run(ws_manager.broadcast("ERROR", {"message": str(e)}))
+                    _broadcast("ERROR", {"message": str(e)}))
                 except Exception:
                     pass
 
@@ -200,10 +210,7 @@ class TradingEngine:
         signal = result["signal"]
 
         # Broadcast signal event
-        try:
-            asyncio.run(ws_manager.broadcast("SIGNAL", result))
-        except Exception:
-            pass
+        _broadcast("SIGNAL", result)
 
         # Check daily loss cap
         lot_sizing = self.config.get("lot_sizing", "fixed")
@@ -250,7 +257,7 @@ class TradingEngine:
         # Calculate quantity
         lot_sizing = self.config.get("lot_sizing", "fixed")
         fund_per_trade = self.fund_amount * 0.10 if lot_sizing == "fixed" else self.capital * 0.10
-        lots = max(1, int(fund_per_trade / (premium * LOT_SIZE)))
+        lots = max(1, int(fund_per_trade / (premium * LOT_SIZE))
         quantity = lots * LOT_SIZE
 
         # Get expiry
@@ -282,12 +289,9 @@ class TradingEngine:
             self.today_trades += 1
             logger.info(f"Entered: {signal} strike={strike} qty={quantity} premium={fill_price:.1f}")
 
-            try:
-                asyncio.run(ws_manager.broadcast("ORDER_PLACED", {
+            _broadcast("ORDER_PLACED", {
                     "signal": signal, "strike": strike, "quantity": quantity, "premium": fill_price
-                }))
-            except Exception:
-                pass
+                })
 
     def _check_exit(self, current_price: float):
         """Check if position should be exited (SL or trailing SL)."""
@@ -340,7 +344,7 @@ class TradingEngine:
             )
 
         try:
-            asyncio.run(ws_manager.broadcast("SL_HIT" if "SL" in reason else "ORDER_FILLED", {
+            _broadcast("SL_HIT" if "SL" in reason else "ORDER_FILLED", {
                 "reason": reason, "pnl": round(pnl, 2), "exit_price": round(exit_price, 2)
             }))
         except Exception:
