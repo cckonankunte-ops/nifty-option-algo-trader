@@ -304,7 +304,7 @@ class BacktestRunner:
                 delta = min(0.65 + (estimated_premium - 100) * 0.001, 0.85)
 
                 entry_price = estimated_premium
-                fund_per_trade = capital * 0.25
+                fund_per_trade = capital * 0.10
                 lots = max(1, int(fund_per_trade / (entry_price * LOT_SIZE)))
                 quantity = lots * LOT_SIZE
                 sl_price = entry_price * (1 - sl_pct / 100)  # SL on option premium
