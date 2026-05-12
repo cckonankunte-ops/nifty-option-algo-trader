@@ -25,7 +25,7 @@ export default function Backtest() {
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Backtest</h2>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="space-y-6">
         {/* Input Form */}
         <div className="bg-gray-800 rounded p-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -218,6 +218,7 @@ export default function Backtest() {
                         <th>Entry ₹</th>
                         <th>Exit ₹</th>
                         <th>P&L</th>
+                        <th>Max Loss</th>
                         <th>Reason</th>
                       </tr>
                     </thead>
@@ -233,6 +234,7 @@ export default function Backtest() {
                           <td className="text-center">{t.entry_price?.toFixed(1)}</td>
                           <td className="text-center">{t.exit_price?.toFixed(1)}</td>
                           <td className={`text-center ${t.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{t.pnl?.toFixed(0)}</td>
+                          <td className="text-center text-yellow-400">₹{Math.round((form.initial_capital || 100000) * 0.06)}</td>
                           <td className="text-center">{t.exit_reason}</td>
                         </tr>
                       ))}
