@@ -108,10 +108,16 @@ class BacktestRunner:
             # New day detected — square off any open position from previous day
             if candle_day and candle_day != current_day:
                 if position and current_day is not None:
-                    # End-of-day square off — calculate option exit price
+                    # End-of-day square off
                     spot_chg = current_price - position["spot_at_entry"]
-                    d = 0.5 if position.get("option_type") == "CALL" else -0.5
-                    exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+                    d = position.get("delta", 0.65)
+                    if position.get("option_type") == "CALL":
+                        exit_opt_price = position["entry_price"] + (spot_chg * d)
+                    else:
+                        exit_opt_price = position["entry_price"] - (spot_chg * d)
+                    exit_opt_price = max(exit_opt_price, 1)
+                    if exit_opt_price < position["sl_price"]:
+                        exit_opt_price = position["sl_price"]
                     pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
                     daily_pnl_today += pnl
@@ -133,9 +139,13 @@ class BacktestRunner:
             # Square off at 3:15 PM (no new trades after 3:00 PM, square off at 3:15)
             if position and total_min >= 915:
                 spot_chg = current_price - position["spot_at_entry"]
-                d = 0.5 if position.get("option_type") == "CALL" else -0.5
-                exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
-                # Cap loss at SL level (SL order would have filled earlier)
+                d = position.get("delta", 0.65)
+                if position.get("option_type") == "CALL":
+                    exit_opt_price = position["entry_price"] + (spot_chg * d)
+                else:
+                    exit_opt_price = position["entry_price"] - (spot_chg * d)
+                exit_opt_price = max(exit_opt_price, 1)
+                # Cap loss at SL level
                 if exit_opt_price < position["sl_price"]:
                     exit_opt_price = position["sl_price"]
                 pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
@@ -155,8 +165,12 @@ class BacktestRunner:
             unrealized = 0
             if position:
                 spot_chg = current_price - position["spot_at_entry"]
-                d = 0.5 if position["option_type"] == "CALL" else -0.5
-                opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+                d = position.get("delta", 0.65)
+                if position["option_type"] == "CALL":
+                    opt_price = position["entry_price"] + (spot_chg * d)
+                else:
+                    opt_price = position["entry_price"] - (spot_chg * d)
+                opt_price = max(opt_price, 1)
                 unrealized = (opt_price - position["entry_price"]) * position["quantity"]
             equity_curve.append({
                 "timestamp": str(current_candle["timestamp"]),
@@ -166,10 +180,13 @@ class BacktestRunner:
             # Check exit conditions for open position
             if position:
                 # Simulate option premium based on spot movement
-                # ATM option delta ≈ 0.5, so option moves ~50% of spot movement
+                # ITM option delta ≈ 0.65
                 spot_change = current_price - position["spot_at_entry"]
-                delta = 0.5 if position["option_type"] == "CALL" else -0.5
-                current_option_price = position["entry_price"] + (spot_change * delta)
+                delta = position.get("delta", 0.65)
+                if position["option_type"] == "CALL":
+                    current_option_price = position["entry_price"] + (spot_change * delta)
+                else:
+                    current_option_price = position["entry_price"] - (spot_change * delta)
                 current_option_price = max(current_option_price, 1)  # Option can't go below ₹1
 
                 # Check stop loss on option premium
@@ -257,13 +274,28 @@ class BacktestRunner:
                 if total_min >= 900:
                     continue
 
-                # Enter position using OPTION PREMIUM (not index price)
+                # Enter position using OPTION PREMIUM
                 LOT_SIZE = 65  # Nifty option lot size
                 option_type = "CALL" if signal == "BUY_CALL" else "PUT"
 
-                # Estimate option premium: ATM weekly option ≈ 1.5-2% of spot for entry
-                # This is a rough estimate; actual premium depends on IV, time to expiry
-                estimated_premium = current_price * 0.015  # ~1.5% of spot ≈ ₹350-400
+                # Select first ITM strike (round to nearest 100)
+                # For CALL: strike below spot (e.g., spot=23440 → strike=23300)
+                # For PUT: strike above spot (e.g., spot=23440 → strike=23600)
+                spot = current_price
+                if option_type == "CALL":
+                    strike = int((spot // 100) * 100)  # Round down to nearest 100
+                    # ITM call premium ≈ intrinsic value + time value
+                    # Intrinsic = spot - strike, Time value ≈ 30-50 for weekly
+                    intrinsic = spot - strike
+                    estimated_premium = intrinsic + 40  # ~40 rs time value for weekly ITM
+                else:
+                    strike = int(((spot // 100) + 1) * 100)  # Round up to nearest 100
+                    # ITM put premium ≈ intrinsic value + time value
+                    intrinsic = strike - spot
+                    estimated_premium = intrinsic + 40
+
+                # ITM options have delta ~0.65
+                delta = 0.65
 
                 entry_price = estimated_premium
                 fund_per_trade = capital * 0.25
@@ -276,6 +308,8 @@ class BacktestRunner:
                 position = {
                     "entry_price": entry_price,
                     "spot_at_entry": current_price,
+                    "strike": strike,
+                    "delta": delta,
                     "entry_time": str(current_candle["timestamp"]),
                     "quantity": quantity,
                     "signal": signal,
@@ -289,8 +323,14 @@ class BacktestRunner:
         if position:
             final_price = candles_5min.iloc[-1]["close"]
             spot_chg = final_price - position["spot_at_entry"]
-            d = 0.5 if position.get("option_type") == "CALL" else -0.5
-            exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+            d = position.get("delta", 0.65)
+            if position.get("option_type") == "CALL":
+                exit_opt_price = position["entry_price"] + (spot_chg * d)
+            else:
+                exit_opt_price = position["entry_price"] - (spot_chg * d)
+            exit_opt_price = max(exit_opt_price, 1)
+            if exit_opt_price < position["sl_price"]:
+                exit_opt_price = position["sl_price"]
             pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
             capital += pnl
             trade_log.append({

@@ -348,6 +348,19 @@ class SignalEngine:
         return int(round(spot_price / 50) * 50)
 
     @staticmethod
+    def calculate_itm_strike(spot_price: float, option_type: str) -> int:
+        """
+        Calculate first ITM strike rounded to nearest 100.
+
+        For CALL: strike below spot (e.g., spot=23440 → strike=23400)
+        For PUT: strike above spot (e.g., spot=23440 → strike=23500)
+        """
+        if option_type == "CE" or option_type == "CALL":
+            return int((spot_price // 100) * 100)
+        else:
+            return int(((spot_price // 100) + 1) * 100)
+
+    @staticmethod
     def get_weekly_expiry(current_time: Optional[datetime] = None) -> datetime:
         """
         Determine current weekly expiry (nearest upcoming Thursday).
