@@ -386,15 +386,8 @@ class BacktestRunner:
         }
 
     def _fetch_candles_paginated(self, start_date: str, end_date: str, resolution: str) -> pd.DataFrame:
-        """Fetch candles. Daily uses index, 5min/1min uses monthly futures contracts from Dhan."""
-        if resolution == "daily":
-            from backend.data.dhan_feed import DhanFeed
-            from backend.config import settings
-            feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
-            return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
-        else:
-            # Use dynamic monthly futures contracts for intraday
-            return self._fetch_monthly_futures_intraday(start_date, end_date, resolution)
+        """Fetch candles. Uses monthly futures contracts from Dhan for intraday."""
+        return self._fetch_monthly_futures_intraday(start_date, end_date, resolution)
 
     def _fetch_monthly_futures_intraday(self, start_date: str, end_date: str, interval: str) -> pd.DataFrame:
         """

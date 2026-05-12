@@ -5,7 +5,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContai
 export default function Backtest() {
   const [form, setForm] = useState({
     start_date: '', end_date: '', initial_capital: 100000,
-    signal_mode: 'SIMPLE_5MIN', candle_interval: 'daily',
+    signal_mode: 'SIMPLE_5MIN', candle_interval: '5',
     adx_period: 14, adx_threshold: 25, rsi_upper: 50, rsi_lower: 50,
     lot_sizing: 'fixed',
   })
@@ -50,7 +50,7 @@ export default function Backtest() {
           <div>
             <label className="text-xs text-gray-400 block mb-2">Candle Interval</label>
             <div className="flex gap-2">
-              {[{v: 'daily', l: 'Daily'}, {v: '5', l: '5-min'}, {v: '1', l: '1-min'}].map(opt => (
+              {[{v: '5', l: '5-min'}, {v: '15', l: '15-min'}, {v: '1', l: '1-min'}].map(opt => (
                 <button key={opt.v}
                   onClick={() => setForm({...form, candle_interval: opt.v})}
                   className={`px-4 py-1.5 rounded text-sm ${form.candle_interval === opt.v ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
@@ -59,9 +59,9 @@ export default function Backtest() {
               ))}
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              {form.candle_interval === 'daily' ? 'Uses daily candles (free tier). Fewer signals.' :
-               form.candle_interval === '5' ? '5-min candles (requires Data API). More signals per day.' :
-               '1-min candles (requires Data API). Most signals, highest frequency.'}
+              {form.candle_interval === '5' ? '5-min candles. More signals per day.' :
+               form.candle_interval === '15' ? '15-min candles. Balanced signals.' :
+               '1-min candles. Most signals, highest frequency.'}
             </p>
           </div>
 

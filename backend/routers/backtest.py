@@ -15,7 +15,7 @@ class BacktestRequest(BaseModel):
     end_date: str = Field(..., description="YYYY-MM-DD")
     initial_capital: float = Field(..., gt=0)
     signal_mode: str = Field(default="SIMPLE_5MIN")
-    candle_interval: str = Field(default="daily", description="daily, 5, or 1")
+    candle_interval: str = Field(default="5", description="5, 15, or 1")
     adx_period: int = Field(default=14)
     adx_threshold: int = Field(default=25)
     rsi_upper: int = Field(default=50)
