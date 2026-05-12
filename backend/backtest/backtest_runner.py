@@ -214,18 +214,57 @@ class BacktestRunner:
         }
 
     def _fetch_candles_paginated(self, start_date: str, end_date: str, resolution: str) -> pd.DataFrame:
-        """Fetch candles via Dhan. resolution: 'daily', '5', or '1'."""
-        from backend.data.dhan_feed import DhanFeed
-        from backend.config import settings
-        feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
-
+        """Fetch candles. Uses Dhan for daily, yfinance for intraday (5min/1min)."""
         if resolution == "daily":
+            from backend.data.dhan_feed import DhanFeed
+            from backend.config import settings
+            feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
             return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
-        elif resolution in ("5", "1"):
-            # Use Nifty Futures for intraday data (index doesn't have minute data)
-            return feed.fetch_nifty_intraday(start_date, end_date, interval=resolution)
         else:
-            return feed.fetch_nifty_spot_candles_5min(start_date, end_date)
+            # Use yfinance for intraday data (Nifty 50 index)
+            return self._fetch_yfinance_intraday(start_date, end_date, resolution)
+
+    def _fetch_yfinance_intraday(self, start_date: str, end_date: str, interval: str) -> pd.DataFrame:
+        """Fetch Nifty 50 intraday data from Yahoo Finance (free, no rate limits)."""
+        try:
+            import yfinance as yf
+
+            # Nifty 50 ticker on Yahoo Finance
+            ticker = yf.Ticker("^NSEI")
+
+            # yfinance interval format
+            yf_interval = f"{interval}m"  # "5m" or "1m"
+
+            # yfinance limits: 1m data = last 7 days, 5m data = last 60 days
+            df = ticker.history(start=start_date, end=end_date, interval=yf_interval)
+
+            if df.empty:
+                logger.warning(f"yfinance returned no data for ^NSEI ({start_date} to {end_date}, {yf_interval})")
+                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+            df = df.reset_index()
+            df = df.rename(columns={"Datetime": "timestamp", "Date": "timestamp",
+                                     "Open": "open", "High": "high", "Low": "low",
+                                     "Close": "close", "Volume": "volume"})
+
+            # Keep only needed columns
+            cols = ["timestamp", "open", "high", "low", "close", "volume"]
+            for col in cols:
+                if col not in df.columns:
+                    df[col] = 0
+
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df = df[cols].sort_values("timestamp").reset_index(drop=True)
+
+            logger.info(f"yfinance: got {len(df)} {interval}-min candles for Nifty 50")
+            return df
+
+        except ImportError:
+            logger.error("yfinance not installed. Run: pip install yfinance")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+        except Exception as e:
+            logger.error(f"yfinance error: {e}")
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     def _compute_daily_pnl(self, trade_log: list) -> list:
         """Compute daily P&L from trade log for bar chart visualization."""
