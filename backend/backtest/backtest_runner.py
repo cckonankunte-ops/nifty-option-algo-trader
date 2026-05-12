@@ -135,6 +135,9 @@ class BacktestRunner:
                 spot_chg = current_price - position["spot_at_entry"]
                 d = 0.5 if position.get("option_type") == "CALL" else -0.5
                 exit_opt_price = max(position["entry_price"] + (spot_chg * d), 1)
+                # Cap loss at SL level (SL order would have filled earlier)
+                if exit_opt_price < position["sl_price"]:
+                    exit_opt_price = position["sl_price"]
                 pnl = (exit_opt_price - position["entry_price"]) * position["quantity"]
                 capital += pnl
                 daily_pnl_today += pnl
@@ -171,7 +174,9 @@ class BacktestRunner:
 
                 # Check stop loss on option premium
                 if current_option_price <= position["sl_price"]:
-                    pnl = (current_option_price - position["entry_price"]) * position["quantity"]
+                    # SL triggered — exit at SL price (not current price, simulating SL order)
+                    exit_price = position["sl_price"]
+                    pnl = (exit_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
                     daily_pnl_today += pnl
                     trade_log.append({
