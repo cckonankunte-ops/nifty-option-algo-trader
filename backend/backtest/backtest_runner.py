@@ -132,11 +132,7 @@ class BacktestRunner:
                 current_day = candle_day
                 daily_pnl_today = 0.0  # Reset daily P&L for new day
 
-            # Skip candles outside trading hours (before 9:45 AM or after 3:15 PM)
-            if total_min < 585 or total_min > 915:  # 9:45=585, 15:15=915
-                continue
-
-            # Square off at 3:15 PM (no new trades after 3:00 PM, square off at 3:15)
+            # Square off at 3:15 PM — MUST come before the skip filter
             if position and total_min >= 915:
                 spot_chg = current_price - position["spot_at_entry"]
                 d = position.get("delta", 0.65)
@@ -159,6 +155,10 @@ class BacktestRunner:
                     "exit_reason": "SQUARE_OFF",
                 })
                 position = None
+                continue
+
+            # Skip candles outside trading hours (before 9:45 AM or after 3:15 PM)
+            if total_min < 585 or total_min > 915:
                 continue
 
             # Update equity curve
