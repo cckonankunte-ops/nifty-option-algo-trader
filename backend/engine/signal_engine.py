@@ -98,11 +98,21 @@ class SignalEngine:
             ema_fast_val < ema_slow_val and prev["ema_fast"] >= prev["ema_slow"]
         )
 
+        # Also check trend continuation (EMA aligned + RSI confirms)
+        # This generates more signals — enters on pullback recovery within a trend
+        bullish_trend = ema_fast_val > ema_slow_val
+        bearish_trend = ema_fast_val < ema_slow_val
+
+        # RSI momentum: check if RSI just crossed above/below threshold
+        prev_rsi = prev["rsi"] if pd.notna(prev["rsi"]) else 50
+        rsi_bullish_cross = rsi_val > rsi_upper and prev_rsi <= rsi_upper
+        rsi_bearish_cross = rsi_val < rsi_lower and prev_rsi >= rsi_lower
+
         signal = "HOLD"
         reason = "No crossover or conflicting conditions"
 
         # Log indicator values for debugging
-        if bullish_crossover or bearish_crossover:
+        if bullish_crossover or bearish_crossover or rsi_bullish_cross or rsi_bearish_cross:
             import logging
             logging.getLogger(__name__).info(
                 f"Crossover detected! bullish={bullish_crossover}, bearish={bearish_crossover}, "
@@ -113,6 +123,7 @@ class SignalEngine:
         # Check if data appears to be daily (few candles) vs intraday (many candles)
         is_daily = len(df) < 200  # Heuristic: daily data has fewer rows
 
+        # Signal 1: EMA crossover (original)
         if bullish_crossover and rsi_val > rsi_upper:
             if is_daily or price > vwap_val:
                 signal = "BUY_CALL"
@@ -129,6 +140,21 @@ class SignalEngine:
                     f"EMA{getattr(self.config, 'ema_slow', 21)}, "
                     f"RSI={rsi_val:.1f} < {rsi_lower}, price={price:.2f}"
                 )
+        # Signal 2: Trend continuation — RSI crosses threshold while EMAs aligned
+        elif bullish_trend and rsi_bullish_cross and (is_daily or price > vwap_val):
+            signal = "BUY_CALL"
+            reason = (
+                f"Trend continuation: EMA{getattr(self.config, 'ema_fast', 9)} > "
+                f"EMA{getattr(self.config, 'ema_slow', 21)}, "
+                f"RSI crossed above {rsi_upper} ({rsi_val:.1f}), price={price:.2f}"
+            )
+        elif bearish_trend and rsi_bearish_cross and (is_daily or price < vwap_val):
+            signal = "BUY_PUT"
+            reason = (
+                f"Trend continuation: EMA{getattr(self.config, 'ema_fast', 9)} < "
+                f"EMA{getattr(self.config, 'ema_slow', 21)}, "
+                f"RSI crossed below {rsi_lower} ({rsi_val:.1f}), price={price:.2f}"
+            )
 
         return self._build_response(signal, reason, df)
 

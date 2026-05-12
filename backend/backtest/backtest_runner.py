@@ -78,10 +78,41 @@ class BacktestRunner:
         # Need at least ema_slow + 2 candles for crossover detection
         lookback = ema_slow + 2
 
+        # Track daily state for intraday square-off
+        current_day = None
+
         for i in range(lookback, len(candles_5min)):
             window_5min = candles_5min.iloc[max(0, i - lookback):i + 1].copy()
             current_candle = candles_5min.iloc[i]
             current_price = current_candle["close"]
+            candle_time = current_candle["timestamp"]
+
+            # Filter: only trade during market hours (9:45 AM to 3:00 PM)
+            if hasattr(candle_time, 'hour'):
+                hour = candle_time.hour
+                minute = candle_time.minute
+                total_min = hour * 60 + minute
+                # Skip candles before 9:45 AM or after 3:00 PM
+                if total_min < 585 or total_min > 900:  # 9:45=585, 15:00=900
+                    continue
+
+                # Auto square-off at 3:00 PM (close position at end of day)
+                candle_day = candle_time.date() if hasattr(candle_time, 'date') else None
+                if candle_day and candle_day != current_day:
+                    current_day = candle_day
+                if position and total_min >= 900:
+                    # Square off at 3:00 PM
+                    pnl = (current_price - position["entry_price"]) * position["quantity"]
+                    capital += pnl
+                    trade_log.append({
+                        **position,
+                        "exit_price": current_price,
+                        "exit_time": str(candle_time),
+                        "pnl": pnl,
+                        "exit_reason": "SQUARE_OFF",
+                    })
+                    position = None
+                    continue
 
             # Update equity curve
             unrealized = 0
@@ -96,7 +127,7 @@ class BacktestRunner:
             if position:
                 # Check stop loss
                 if current_price <= position["sl_price"]:
-                    pnl = (position["sl_price"] - position["entry_price"]) * position["quantity"]
+                    pnl = (current_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
                     trade_log.append({
                         **position,
@@ -119,7 +150,7 @@ class BacktestRunner:
                         position["sl_price"] = trailing_sl
 
                     if current_price <= position["sl_price"]:
-                        pnl = (position["sl_price"] - position["entry_price"]) * position["quantity"]
+                        pnl = (current_price - position["entry_price"]) * position["quantity"]
                         capital += pnl
                         trade_log.append({
                             **position,
