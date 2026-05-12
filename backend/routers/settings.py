@@ -55,8 +55,8 @@ async def broker_status():
 @router.post("/broker/credentials")
 async def save_credentials(creds: DhanCredentials):
     """Save Dhan credentials — updates in memory immediately, no restart needed."""
-    settings.DHAN_CLIENT_ID = creds.dhan_client_id
-    settings.DHAN_ACCESS_TOKEN = creds.dhan_access_token
+    settings.DHAN_CLIENT_ID = creds.dhan_client_id.strip()
+    settings.DHAN_ACCESS_TOKEN = creds.dhan_access_token.strip()
 
     # Also update .env file so it persists across restarts
     import os
