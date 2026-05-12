@@ -532,7 +532,7 @@ class BacktestRunner:
                     security_id = str(row["SEM_SMST_SECURITY_ID"])
                     # Map to expiry month (contract expires in that month)
                     futures_map[(expiry.year, expiry.month)] = security_id
-                    logger.info(f"  Found: {row['SEM_TRADING_SYMBOL']} → sid={security_id}, expiry={expiry.date()}")
+                    logger.info(f"  Found: {row['SEM_TRADING_SYMBOL']} -> sid={security_id}, expiry={expiry.date()}")
                 except Exception:
                     continue
 
