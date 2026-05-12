@@ -82,7 +82,7 @@ class BacktestRunner:
         # Track daily state for intraday square-off
         current_day = None
         daily_pnl_today = 0.0
-        daily_cap_amount = initial_capital * 0.06  # 6% daily loss cap
+        # Daily cap will be recalculated dynamically based on current capital
 
         # For intraday options, use appropriate SL
         # Options are volatile — 20% SL on premium is standard
@@ -286,7 +286,8 @@ class BacktestRunner:
                 adx_filtered_count += 1
 
             if signal in ("BUY_CALL", "BUY_PUT"):
-                # Check daily loss cap — don't trade if already lost too much today
+                # Check daily loss cap — dynamic based on current capital
+                daily_cap_amount = capital * 0.06 if lot_sizing == "compounding" else initial_capital * 0.06
                 if daily_pnl_today <= -daily_cap_amount:
                     continue
 
@@ -345,6 +346,7 @@ class BacktestRunner:
                     "sl_price": sl_price,
                     "peak_price": entry_price,
                     "trigger_type": trigger_type,
+                    "daily_max_loss": round(daily_cap_amount, 0),
                 }
 
         # Close any remaining position at end

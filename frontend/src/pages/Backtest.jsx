@@ -246,7 +246,7 @@ export default function Backtest() {
                           <td className="text-center">{t.entry_price?.toFixed(1)}</td>
                           <td className="text-center">{t.exit_price?.toFixed(1)}</td>
                           <td className={`text-center ${t.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{t.pnl?.toFixed(0)}</td>
-                          <td className="text-center text-yellow-400">₹{Math.round((form.initial_capital || 100000) * 0.06)}</td>
+                          <td className="text-center text-yellow-400">₹{t.daily_max_loss || Math.round((form.initial_capital || 100000) * 0.06)}</td>
                           <td className="text-center">{t.exit_reason}</td>
                         </tr>
                       ))}
