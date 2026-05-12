@@ -5,8 +5,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Nifty options lot size
-NIFTY_LOT_SIZE = 25
+# Nifty options lot size (75 as of Nov 2024)
+NIFTY_LOT_SIZE = 75
 
 
 class RiskManager:
