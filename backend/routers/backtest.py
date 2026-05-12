@@ -89,9 +89,12 @@ async def get_result(result_id: int, db=Depends(get_db)):
 
 @router.get("/debug-candles")
 async def debug_candles():
-    """Debug endpoint — test if Dhan API returns candle data."""
-    from backend.data.dhan_feed import DhanFeed, NIFTY_INDEX_SECURITY_ID
+    """Debug endpoint — test Dhan API and find correct Nifty security IDs."""
+    from backend.data.dhan_feed import DhanFeed, NIFTY_INDEX_SECURITY_ID, NIFTY_FUTURES_SECURITY_ID
     from backend.config import settings
+    import pandas as pd
+    import urllib.request
+    import io
 
     feed = DhanFeed(client_id=settings.DHAN_CLIENT_ID, access_token=settings.DHAN_ACCESS_TOKEN)
 
@@ -99,26 +102,38 @@ async def debug_candles():
     today = date.today().strftime("%Y-%m-%d")
     week_ago = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    # Try the configured security ID
+    # Try daily data
     df = feed.fetch_nifty_spot_candles_5min(week_ago, today)
 
-    # Also try fetching the instrument list to find Nifty 50
-    nifty_info = None
+    # Find Nifty futures from instrument master
+    nifty_futures_info = []
     try:
-        sec_list = feed.dhan.fetch_security_list("compact")
-        if sec_list and isinstance(sec_list, dict):
-            nifty_info = "Security list fetched"
+        csv_url = "https://images.dhan.co/api-data/api-scrip-master.csv"
+        response = urllib.request.urlopen(csv_url)
+        csv_data = response.read().decode("utf-8")
+        master = pd.read_csv(io.StringIO(csv_data))
+
+        # Find Nifty futures
+        nifty_fut = master[
+            (master["SEM_EXM_EXCH_ID"] == "NSE") &
+            (master["SEM_INSTRUMENT_NAME"] == "FUTIDX") &
+            (master["SEM_TRADING_SYMBOL"].str.contains("NIFTY", na=False))
+        ].head(5)
+
+        for _, row in nifty_fut.iterrows():
+            nifty_futures_info.append({
+                "security_id": str(row["SEM_SMST_SECURITY_ID"]),
+                "symbol": row["SEM_TRADING_SYMBOL"],
+                "expiry": str(row.get("SEM_EXPIRY_DATE", "")),
+            })
     except Exception as e:
-        nifty_info = f"Error: {e}"
+        nifty_futures_info = [{"error": str(e)}]
 
     return {
         "dhan_client_initialized": feed.dhan is not None,
-        "security_id_used": NIFTY_INDEX_SECURITY_ID,
-        "from_date": week_ago,
-        "to_date": today,
-        "rows_fetched": len(df),
-        "columns": list(df.columns) if not df.empty else [],
-        "sample_data": df.head(3).to_dict(orient="records") if not df.empty else [],
-        "nifty_info": nifty_info,
-        "note": "Security ID 13 returns data with prices ~6000-7000. This IS Nifty 50 data - Dhan returns values without the thousands multiplier for INDEX type on NSE_EQ segment.",
+        "daily_data_security_id": NIFTY_INDEX_SECURITY_ID,
+        "intraday_security_id": NIFTY_FUTURES_SECURITY_ID,
+        "daily_rows_fetched": len(df),
+        "daily_sample": df.head(2).to_dict(orient="records") if not df.empty else [],
+        "nifty_futures_from_master": nifty_futures_info,
     }
