@@ -80,28 +80,31 @@ class BacktestRunner:
 
         # Track daily state for intraday square-off
         current_day = None
+        # For intraday, use tighter SL (0.5% instead of 3% which is too wide for index)
+        if candle_interval in ("5", "1"):
+            sl_pct = min(sl_pct, 0.5)  # 0.5% SL for intraday (~120 points on Nifty)
 
         for i in range(lookback, len(candles_5min)):
             window_5min = candles_5min.iloc[max(0, i - lookback):i + 1].copy()
             current_candle = candles_5min.iloc[i]
             current_price = current_candle["close"]
-            candle_time = current_candle["timestamp"]
+            candle_time = pd.Timestamp(current_candle["timestamp"])
 
-            # Filter: only trade during market hours (9:45 AM to 3:00 PM)
-            if hasattr(candle_time, 'hour'):
+            # Get hour/minute for market hours check
+            try:
                 hour = candle_time.hour
                 minute = candle_time.minute
                 total_min = hour * 60 + minute
-                # Skip candles before 9:45 AM or after 3:00 PM
-                if total_min < 585 or total_min > 900:  # 9:45=585, 15:00=900
-                    continue
+                candle_day = candle_time.date()
+            except Exception:
+                # If timestamp doesn't have time info, skip filtering
+                total_min = 600  # Assume within market hours
+                candle_day = None
 
-                # Auto square-off at 3:00 PM (close position at end of day)
-                candle_day = candle_time.date() if hasattr(candle_time, 'date') else None
-                if candle_day and candle_day != current_day:
-                    current_day = candle_day
-                if position and total_min >= 900:
-                    # Square off at 3:00 PM
+            # New day detected — square off any open position from previous day
+            if candle_day and candle_day != current_day:
+                if position and current_day is not None:
+                    # End-of-day square off
                     pnl = (current_price - position["entry_price"]) * position["quantity"]
                     capital += pnl
                     trade_log.append({
@@ -112,7 +115,25 @@ class BacktestRunner:
                         "exit_reason": "SQUARE_OFF",
                     })
                     position = None
-                    continue
+                current_day = candle_day
+
+            # Skip candles outside trading hours (before 9:45 AM or after 3:15 PM)
+            if total_min < 585 or total_min > 915:  # 9:45=585, 15:15=915
+                continue
+
+            # Square off at 3:00 PM
+            if position and total_min >= 900:
+                pnl = (current_price - position["entry_price"]) * position["quantity"]
+                capital += pnl
+                trade_log.append({
+                    **position,
+                    "exit_price": current_price,
+                    "exit_time": str(candle_time),
+                    "pnl": pnl,
+                    "exit_reason": "SQUARE_OFF",
+                })
+                position = None
+                continue
 
             # Update equity curve
             unrealized = 0
