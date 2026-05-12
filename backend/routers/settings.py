@@ -53,10 +53,45 @@ async def broker_status():
 
 @router.post("/broker/credentials")
 async def save_credentials(creds: DhanCredentials):
-    """Save Dhan credentials (runtime only — persist in .env manually)."""
+    """Save Dhan credentials — updates in memory immediately, no restart needed."""
     settings.DHAN_CLIENT_ID = creds.dhan_client_id
     settings.DHAN_ACCESS_TOKEN = creds.dhan_access_token
-    return {"message": "Credentials updated for this session"}
+
+    # Also update .env file so it persists across restarts
+    import os
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+    try:
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r") as f:
+                lines = f.readlines()
+
+        # Update or add the token lines
+        updated_client = False
+        updated_token = False
+        new_lines = []
+        for line in lines:
+            if line.startswith("DHAN_CLIENT_ID="):
+                new_lines.append(f"DHAN_CLIENT_ID={creds.dhan_client_id}\n")
+                updated_client = True
+            elif line.startswith("DHAN_ACCESS_TOKEN="):
+                new_lines.append(f"DHAN_ACCESS_TOKEN={creds.dhan_access_token}\n")
+                updated_token = True
+            else:
+                new_lines.append(line)
+
+        if not updated_client:
+            new_lines.append(f"DHAN_CLIENT_ID={creds.dhan_client_id}\n")
+        if not updated_token:
+            new_lines.append(f"DHAN_ACCESS_TOKEN={creds.dhan_access_token}\n")
+
+        with open(env_path, "w") as f:
+            f.writelines(new_lines)
+
+    except Exception as e:
+        return {"message": f"Token updated in memory but failed to save to .env: {e}"}
+
+    return {"message": "Credentials saved. Token active for this session and persisted to .env"}
 
 
 @router.post("/broker/verify")
