@@ -28,6 +28,7 @@ def _broadcast(event_type: str, payload: dict):
     """Safely broadcast WebSocket event from background thread."""
     try:
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         loop.run_until_complete(ws_manager.broadcast(event_type, payload))
         loop.close()
     except Exception:
