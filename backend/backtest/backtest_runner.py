@@ -278,24 +278,30 @@ class BacktestRunner:
                 LOT_SIZE = 65  # Nifty option lot size
                 option_type = "CALL" if signal == "BUY_CALL" else "PUT"
 
-                # Select first ITM strike (round to nearest 100)
-                # For CALL: strike below spot (e.g., spot=23440 → strike=23300)
-                # For PUT: strike above spot (e.g., spot=23440 → strike=23600)
+                # Select first ITM strike with premium >= ₹100
+                # For CALL: strike below spot, go deeper ITM until premium >= 100
+                # For PUT: strike above spot, go deeper ITM until premium >= 100
                 spot = current_price
                 if option_type == "CALL":
                     strike = int((spot // 100) * 100)  # Round down to nearest 100
-                    # ITM call premium ≈ intrinsic value + time value
-                    # Intrinsic = spot - strike, Time value ≈ 30-50 for weekly
-                    intrinsic = spot - strike
-                    estimated_premium = intrinsic + 40  # ~40 rs time value for weekly ITM
+                    # Keep going deeper ITM until premium >= 100
+                    while True:
+                        intrinsic = spot - strike
+                        estimated_premium = intrinsic + 40
+                        if estimated_premium >= 100:
+                            break
+                        strike -= 100  # Go one more strike ITM
                 else:
                     strike = int(((spot // 100) + 1) * 100)  # Round up to nearest 100
-                    # ITM put premium ≈ intrinsic value + time value
-                    intrinsic = strike - spot
-                    estimated_premium = intrinsic + 40
+                    while True:
+                        intrinsic = strike - spot
+                        estimated_premium = intrinsic + 40
+                        if estimated_premium >= 100:
+                            break
+                        strike += 100  # Go one more strike ITM
 
-                # ITM options have delta ~0.65
-                delta = 0.65
+                # ITM options have delta ~0.65-0.75 (deeper ITM = higher delta)
+                delta = min(0.65 + (estimated_premium - 100) * 0.001, 0.85)
 
                 entry_price = estimated_premium
                 fund_per_trade = capital * 0.25
