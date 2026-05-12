@@ -256,7 +256,7 @@ class TradingEngine:
         # Calculate quantity
         lot_sizing = self.config.get("lot_sizing", "fixed")
         fund_per_trade = self.fund_amount * 0.10 if lot_sizing == "fixed" else self.capital * 0.10
-        lots = max(1, int(fund_per_trade / (premium * LOT_SIZE))
+        lots = max(1, int(fund_per_trade / (premium * LOT_SIZE)))
         quantity = lots * LOT_SIZE
 
         # Get expiry
