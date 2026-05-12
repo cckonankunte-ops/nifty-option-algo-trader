@@ -323,6 +323,9 @@ class DhanFeed:
 
                 logger.info(f"Intraday request: sid={security_id}, seg={exchange_segment}, type={instrument_type}, interval={interval}, from={from_dt}, to={to_dt}")
 
+                # Rate limit: wait 1 second between requests to avoid DH-904
+                time.sleep(1)
+
                 response = self.dhan.intraday_minute_data(
                     security_id=security_id,
                     exchange_segment=exchange_segment,
