@@ -7,6 +7,7 @@ export default function Backtest() {
     start_date: '', end_date: '', initial_capital: 100000,
     signal_mode: 'SIMPLE_5MIN', candle_interval: 'daily',
     adx_period: 14, adx_threshold: 25, rsi_upper: 50, rsi_lower: 50,
+    lot_sizing: 'fixed',
   })
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -107,6 +108,24 @@ export default function Backtest() {
               </div>
             </div>
           )}
+
+          {/* Lot Sizing */}
+          <div>
+            <label className="text-xs text-gray-400 block mb-2">Lot Sizing</label>
+            <div className="flex gap-2">
+              <button onClick={() => setForm({...form, lot_sizing: 'fixed'})}
+                className={`px-4 py-1.5 rounded text-sm ${form.lot_sizing === 'fixed' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                Fixed (Initial Capital)
+              </button>
+              <button onClick={() => setForm({...form, lot_sizing: 'compounding'})}
+                className={`px-4 py-1.5 rounded text-sm ${form.lot_sizing === 'compounding' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                Compounding
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {form.lot_sizing === 'fixed' ? 'Always calculate lots from initial capital (consistent risk)' : 'Calculate lots from current capital (profits increase position size)'}
+            </p>
+          </div>
 
           <button onClick={run} disabled={loading} className="w-full bg-green-600 hover:bg-green-700 py-2 rounded font-medium disabled:opacity-50">
             {loading ? 'Running...' : 'Run Backtest'}

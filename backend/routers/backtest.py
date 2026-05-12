@@ -20,6 +20,7 @@ class BacktestRequest(BaseModel):
     adx_threshold: int = Field(default=25)
     rsi_upper: int = Field(default=50)
     rsi_lower: int = Field(default=50)
+    lot_sizing: str = Field(default="fixed", description="fixed or compounding")
 
 
 @router.post("/run")
@@ -37,6 +38,7 @@ async def run_backtest(request: BacktestRequest):
         adx_threshold=request.adx_threshold,
         rsi_upper=request.rsi_upper,
         rsi_lower=request.rsi_lower,
+        lot_sizing=request.lot_sizing,
     )
 
     return result

@@ -27,6 +27,7 @@ class BacktestRunner:
         initial_capital: float,
         signal_mode: str = "SIMPLE_5MIN",
         candle_interval: str = "daily",
+        lot_sizing: str = "fixed",
         ema_fast: int = 9,
         ema_slow: int = 21,
         rsi_period: int = 14,
@@ -324,6 +325,8 @@ class BacktestRunner:
 
                 entry_price = estimated_premium
                 fund_per_trade = capital * 0.10
+                if lot_sizing == "fixed":
+                    fund_per_trade = initial_capital * 0.10
                 lots = max(1, int(fund_per_trade / (entry_price * LOT_SIZE)))
                 quantity = lots * LOT_SIZE
                 sl_price = entry_price * (1 - sl_pct / 100)  # SL on option premium
