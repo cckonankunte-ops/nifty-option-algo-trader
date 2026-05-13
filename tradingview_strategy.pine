@@ -26,10 +26,10 @@ istHour = hour(time, "Asia/Kolkata")
 istMinute = minute(time, "Asia/Kolkata")
 currentMin = istHour * 60 + istMinute
 
-// 9:45 AM = 585 min, 3:00 PM = 900 min, 3:15 PM = 915 min
+// 9:45 AM = 585 min, 3:00 PM = 900 min
 inTradingHours = currentMin >= 585 and currentMin <= 900
-isSquareOffTime = currentMin >= 915
-noNewEntry = currentMin >= 900
+isSquareOffTime = currentMin >= 900 and currentMin <= 930
+noNewEntry = currentMin >= 885  // No new entries after 2:45 PM
 
 // === BUY CALL (Long) Conditions ===
 bullishCrossover = ta.crossover(ema9, ema21) and rsi > rsiUpper
