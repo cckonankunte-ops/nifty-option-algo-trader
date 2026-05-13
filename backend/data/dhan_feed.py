@@ -227,29 +227,30 @@ class DhanFeed:
         """Return last known tick price for security_id."""
         price = self._last_tick.get(security_id)
         if price is None and self.dhan:
-            # Fallback to REST quote
+            # Fetch LTP via Dhan market quote API
             try:
-                response = self.dhan.market_quote(security_id=security_id, exchange_segment="NSE_FNO")
+                response = self.dhan.get_ltp(
+                    security_id=security_id,
+                    exchange_segment="NSE_FNO"
+                )
                 if response and response.get("status") == "success" and response.get("data"):
                     data = response["data"]
+                    # Response format: {"data": {"NSE_FNO": {"51375": {"last_price": 423.5}}}}
                     if isinstance(data, dict):
-                        # Try different key formats
-                        ltp = data.get("LTP") or data.get("ltp") or data.get("last_price")
-                        if ltp:
-                            price = float(ltp)
-                            self._last_tick[security_id] = price
-            except AttributeError:
-                # Try alternative method names
-                try:
-                    response = self.dhan.get_market_quote_ohlc(security_id=security_id, exchange_segment="NSE_FNO")
-                    if response and response.get("data"):
-                        price = float(response["data"].get("LTP", 0))
-                        if price > 0:
-                            self._last_tick[security_id] = price
-                except Exception as e2:
-                    logger.error(f"All quote methods failed for {security_id}: {e2}")
+                        for segment in data.values():
+                            if isinstance(segment, dict):
+                                for sid_data in segment.values():
+                                    if isinstance(sid_data, dict) and "last_price" in sid_data:
+                                        price = float(sid_data["last_price"])
+                                        self._last_tick[security_id] = price
+                                        return price
+                    # Try flat format
+                    ltp = data.get("last_price") or data.get("LTP") or data.get("ltp")
+                    if ltp:
+                        price = float(ltp)
+                        self._last_tick[security_id] = price
             except Exception as e:
-                logger.error(f"REST quote failed for {security_id}: {e}")
+                logger.error(f"LTP fetch failed for {security_id}: {e}")
         return price
 
     # ─── Expired Options Data ────────────────────────────────────────
