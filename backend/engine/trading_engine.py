@@ -238,20 +238,23 @@ class TradingEngine:
         option_type = "CALL" if signal == "BUY_CALL" else "PUT"
         sl_pct = self.config.get("sl_percent", 20)
 
-        # Calculate ITM strike with premium >= 100
+        # Select 1st or 2nd ITM strike
+        # For PUT: 1st ITM = next 100 above spot, 2nd ITM = 200 above
+        # For CALL: 1st ITM = next 100 below spot, 2nd ITM = 200 below
         if option_type == "CALL":
+            # 1st ITM call = round down to nearest 100
             strike = int((current_price // 100) * 100)
-            # Go deeper ITM until we find a valid strike
-            for _ in range(5):
-                if current_price - strike >= 60:
-                    break
+            # If too close to ATM (intrinsic < 50), go one more step
+            if current_price - strike < 50:
                 strike -= 100
         else:
+            # 1st ITM put = round up to nearest 100
             strike = int(((current_price // 100) + 1) * 100)
-            for _ in range(5):
-                if strike - current_price >= 60:
-                    break
+            # If too close to ATM (intrinsic < 50), go one more step
+            if strike - current_price < 50:
                 strike += 100
+
+        logger.info(f"Strike selection: spot={current_price}, option={option_type}, strike={strike}, intrinsic={abs(strike - current_price)}")
 
         # Get expiry
         expiry = SignalEngine.get_weekly_expiry(datetime.now(IST))
@@ -280,8 +283,8 @@ class TradingEngine:
             premium = intrinsic + 40
             logger.warning(f"Using estimated premium: Rs.{premium}")
 
-        # Ensure minimum premium >= 100
-        if premium < 100:
+        # Skip if premium too low (< 50)
+        if premium < 50:
             logger.warning(f"Premium too low ({premium}), skipping trade")
             return
 
