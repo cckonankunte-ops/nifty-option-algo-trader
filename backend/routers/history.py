@@ -14,8 +14,9 @@ async def get_trades(
     date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     status: Optional[str] = Query(None),
     option_type: Optional[str] = Query(None, description="CE or PE"),
+    trigger_type: Optional[str] = Query(None, description="paper or live"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(50, ge=1, le=100),
     db=Depends(get_db),
 ):
     """Paginated trade history with filters."""
@@ -28,6 +29,8 @@ async def get_trades(
         stmt = stmt.where(Trade.status == status)
     if option_type:
         stmt = stmt.where(Trade.option_type == option_type)
+    if trigger_type:
+        stmt = stmt.where(Trade.trigger_type == trigger_type)
 
     # Pagination
     offset = (page - 1) * page_size
