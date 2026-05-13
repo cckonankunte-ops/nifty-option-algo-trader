@@ -192,7 +192,7 @@ class TradingEngine:
 
         try:
             candles = self.dhan_feed._fetch_intraday_range(
-                security_id="61093",  # Current Nifty futures
+                security_id="66071",  # NIFTY-May2026-FUT (current month)
                 exchange_segment="NSE_FNO",
                 instrument_type="FUTIDX",
                 interval=interval,
