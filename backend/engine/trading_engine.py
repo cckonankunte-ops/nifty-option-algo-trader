@@ -233,7 +233,7 @@ class TradingEngine:
             self._enter_trade(signal, candles)
 
     def _enter_trade(self, signal: str, candles: pd.DataFrame):
-        """Enter a new trade."""
+        """Enter a new trade using real option premium from Dhan."""
         current_price = candles.iloc[-1]["close"]
         option_type = "CALL" if signal == "BUY_CALL" else "PUT"
         sl_pct = self.config.get("sl_percent", 20)
@@ -241,29 +241,55 @@ class TradingEngine:
         # Calculate ITM strike with premium >= 100
         if option_type == "CALL":
             strike = int((current_price // 100) * 100)
-            while True:
-                intrinsic = current_price - strike
-                premium = intrinsic + 40
-                if premium >= 100:
+            # Go deeper ITM until we find a valid strike
+            for _ in range(5):
+                if current_price - strike >= 60:
                     break
                 strike -= 100
         else:
             strike = int(((current_price // 100) + 1) * 100)
-            while True:
-                intrinsic = strike - current_price
-                premium = intrinsic + 40
-                if premium >= 100:
+            for _ in range(5):
+                if strike - current_price >= 60:
                     break
                 strike += 100
 
+        # Get expiry
+        expiry = SignalEngine.get_weekly_expiry(datetime.now(IST))
+
+        # Fetch REAL option premium from Dhan
+        try:
+            opt_type_str = "CE" if option_type == "CALL" else "PE"
+            security_id = self.dhan_feed.get_security_id(float(strike), expiry.date(), opt_type_str)
+            real_premium = self.dhan_feed.get_last_price(security_id)
+
+            if real_premium is None or real_premium <= 0:
+                logger.warning(f"Could not get real premium for {strike}{opt_type_str}, skipping trade")
+                return
+
+            premium = real_premium
+            logger.info(f"Real premium for {strike}{opt_type_str}: Rs.{premium}")
+
+        except (ValueError, Exception) as e:
+            logger.error(f"Failed to get option premium: {e}")
+            # Fallback to estimation
+            if option_type == "CALL":
+                intrinsic = max(current_price - strike, 0)
+            else:
+                intrinsic = max(strike - current_price, 0)
+            premium = intrinsic + 40
+            logger.warning(f"Using estimated premium: Rs.{premium}")
+
+        # Ensure minimum premium >= 100
+        if premium < 100:
+            logger.warning(f"Premium too low ({premium}), skipping trade")
+            return
+
         # Calculate quantity
+        LOT_SIZE = 65
         lot_sizing = self.config.get("lot_sizing", "fixed")
         fund_per_trade = self.fund_amount * 0.10 if lot_sizing == "fixed" else self.capital * 0.10
         lots = max(1, int(fund_per_trade / (premium * LOT_SIZE)))
         quantity = lots * LOT_SIZE
-
-        # Get expiry
-        expiry = SignalEngine.get_weekly_expiry(datetime.now(IST))
 
         # Place order
         order_result = self.order_executor.place_buy_order(
@@ -275,7 +301,7 @@ class TradingEngine:
         )
 
         if order_result.get("status") in ("PAPER_FILLED", "SUBMITTED"):
-            fill_price = order_result.get("fill_price") or premium
+            fill_price = real_premium if 'real_premium' in dir() else premium
             self.position = {
                 "entry_price": fill_price,
                 "spot_at_entry": current_price,
@@ -286,7 +312,7 @@ class TradingEngine:
                 "peak_price": fill_price,
                 "entry_time": datetime.now(IST).strftime("%Y-%m-%d %H:%M"),
                 "signal": signal,
-                "security_id": order_result.get("security_id"),
+                "security_id": security_id if 'security_id' in dir() else "",
             }
             self.today_trades += 1
             logger.info(f"Entered: {signal} strike={strike} qty={quantity} premium={fill_price:.1f}")
@@ -296,17 +322,32 @@ class TradingEngine:
                 })
 
     def _check_exit(self, current_price: float):
-        """Check if position should be exited (SL or trailing SL)."""
+        """Check if position should be exited (SL or trailing SL) using real option price."""
         if not self.position:
             return
 
-        # Simulate option price
-        spot_change = current_price - self.position["spot_at_entry"]
-        delta = 0.65
-        if self.position["option_type"] == "CALL":
-            current_opt_price = self.position["entry_price"] + (spot_change * delta)
+        # Get real option price from Dhan
+        security_id = self.position.get("security_id", "")
+        if security_id and self.dhan_feed:
+            real_price = self.dhan_feed.get_last_price(security_id)
+            if real_price and real_price > 0:
+                current_opt_price = real_price
+            else:
+                # Fallback to delta simulation
+                spot_change = current_price - self.position["spot_at_entry"]
+                delta = 0.65
+                if self.position["option_type"] == "CALL":
+                    current_opt_price = self.position["entry_price"] + (spot_change * delta)
+                else:
+                    current_opt_price = self.position["entry_price"] - (spot_change * delta)
         else:
-            current_opt_price = self.position["entry_price"] - (spot_change * delta)
+            spot_change = current_price - self.position["spot_at_entry"]
+            delta = 0.65
+            if self.position["option_type"] == "CALL":
+                current_opt_price = self.position["entry_price"] + (spot_change * delta)
+            else:
+                current_opt_price = self.position["entry_price"] - (spot_change * delta)
+
         current_opt_price = max(current_opt_price, 1)
 
         # Update peak
@@ -315,7 +356,7 @@ class TradingEngine:
 
         # Check SL
         if current_opt_price <= self.position["sl_price"]:
-            self._exit_trade(self.position["sl_price"], "SL_HIT")
+            self._exit_trade(current_opt_price, "SL_HIT")
 
     def _square_off(self):
         """Square off open position."""
