@@ -86,6 +86,5 @@ plotshape(buyPutSignal and strategy.position_size == 0, "BUY PUT", shape.triangl
 // Background color for position
 bgcolor(strategy.position_size > 0 ? color.new(color.green, 90) : strategy.position_size < 0 ? color.new(color.red, 90) : na)
 
-// RSI panel
-hline(rsiUpper, "RSI Upper", color=color.gray, linestyle=hline.style_dashed)
-hline(rsiLower, "RSI Lower", color=color.gray, linestyle=hline.style_dashed)
+// RSI shown in separate panel below (not on main chart)
+// To see RSI, add RSI indicator separately from TradingView indicators menu
