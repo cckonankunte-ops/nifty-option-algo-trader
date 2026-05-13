@@ -363,27 +363,28 @@ class SignalEngine:
     @staticmethod
     def get_weekly_expiry(current_time: Optional[datetime] = None) -> datetime:
         """
-        Determine current weekly expiry (nearest upcoming Wednesday).
-        NSE changed Nifty weekly expiry from Thursday to Wednesday in 2024.
+        Determine current weekly expiry (nearest upcoming Tuesday).
+        NSE Nifty weekly options expire on Tuesday.
+        If Tuesday is a holiday, expiry moves to Monday (handled by instrument master lookup).
         """
         if current_time is None:
             current_time = datetime.now()
 
-        weekday = current_time.weekday()  # Monday=0, Wednesday=2
+        weekday = current_time.weekday()  # Monday=0, Tuesday=1
 
-        if weekday < 2:
-            # Before Wednesday — this Wednesday
-            days_ahead = 2 - weekday
-        elif weekday == 2:
-            # Wednesday — check time
+        if weekday < 1:
+            # Monday — this Tuesday
+            days_ahead = 1 - weekday
+        elif weekday == 1:
+            # Tuesday — check time
             cutoff = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
             if current_time <= cutoff:
                 days_ahead = 0  # Today is expiry
             else:
-                days_ahead = 7  # Next Wednesday
+                days_ahead = 7  # Next Tuesday
         else:
-            # After Wednesday — next Wednesday
-            days_ahead = 2 + (7 - weekday)
+            # After Tuesday — next Tuesday
+            days_ahead = 1 + (7 - weekday)
 
         expiry = current_time + timedelta(days=days_ahead)
         return expiry.replace(hour=15, minute=30, second=0, microsecond=0)
