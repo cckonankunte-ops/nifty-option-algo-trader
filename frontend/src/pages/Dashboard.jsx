@@ -240,12 +240,15 @@ export default function Dashboard() {
       {status?.position && (
         <div className="bg-gray-800 rounded p-4">
           <h3 className="text-sm font-medium text-green-400 mb-2">Open Position</h3>
-          <div className="grid grid-cols-5 gap-3 text-sm">
+          <div className="grid grid-cols-4 gap-3 text-sm">
             <div><span className="text-gray-400">Signal:</span> {status.position.signal}</div>
             <div><span className="text-gray-400">Strike:</span> {status.position.strike} {status.position.option_type}</div>
             <div><span className="text-gray-400">Qty:</span> {status.position.quantity}</div>
             <div><span className="text-gray-400">Entry:</span> ₹{status.position.entry_price?.toFixed(1)}</div>
+            <div><span className="text-gray-400">Current LTP:</span> <span className="text-white font-medium">₹{status.position.current_ltp || '-'}</span></div>
             <div><span className="text-gray-400">SL:</span> ₹{status.position.sl_price?.toFixed(1)}</div>
+            <div><span className="text-gray-400">Peak:</span> ₹{status.position.peak_price?.toFixed(1)}</div>
+            <div><span className="text-gray-400">P&L:</span> <span className={`font-medium ${(status.position.unrealized_pnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{status.position.unrealized_pnl || 0}</span></div>
           </div>
         </div>
       )}

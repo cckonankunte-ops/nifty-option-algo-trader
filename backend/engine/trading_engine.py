@@ -354,13 +354,26 @@ class TradingEngine:
 
         current_opt_price = max(current_opt_price, 1)
 
+        # Store current LTP and unrealized P&L in position for Dashboard display
+        self.position["current_ltp"] = round(current_opt_price, 2)
+        self.position["unrealized_pnl"] = round((current_opt_price - self.position["entry_price"]) * self.position["quantity"], 2)
+
         # Update peak
         if current_opt_price > self.position["peak_price"]:
             self.position["peak_price"] = current_opt_price
 
+        # Trailing SL: activate after 4% profit, trail at 2% below peak
+        entry = self.position["entry_price"]
+        profit_pct = ((self.position["peak_price"] - entry) / entry) * 100
+        if profit_pct >= 4.0:
+            trailing_sl = self.position["peak_price"] * 0.98  # 2% below peak
+            if trailing_sl > self.position["sl_price"]:
+                self.position["sl_price"] = round(trailing_sl, 2)
+                logger.info(f"Trailing SL updated: {self.position['sl_price']} (peak={self.position['peak_price']:.1f})")
+
         # Check SL
         if current_opt_price <= self.position["sl_price"]:
-            self._exit_trade(current_opt_price, "SL_HIT")
+            self._exit_trade(current_opt_price, "SL_HIT" if profit_pct < 4.0 else "TRAILING_SL")
 
     def _square_off(self):
         """Square off open position at current market price."""
