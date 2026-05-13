@@ -235,6 +235,59 @@ export default function Dashboard() {
           )}
         </div>
       )}
+
+      {/* Current Position */}
+      {status?.position && (
+        <div className="bg-gray-800 rounded p-4">
+          <h3 className="text-sm font-medium text-green-400 mb-2">Open Position</h3>
+          <div className="grid grid-cols-5 gap-3 text-sm">
+            <div><span className="text-gray-400">Signal:</span> {status.position.signal}</div>
+            <div><span className="text-gray-400">Strike:</span> {status.position.strike} {status.position.option_type}</div>
+            <div><span className="text-gray-400">Qty:</span> {status.position.quantity}</div>
+            <div><span className="text-gray-400">Entry:</span> ₹{status.position.entry_price?.toFixed(1)}</div>
+            <div><span className="text-gray-400">SL:</span> ₹{status.position.sl_price?.toFixed(1)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Today's Trade Log */}
+      {status?.today_trade_log?.length > 0 && (
+        <div className="bg-gray-800 rounded p-4">
+          <h3 className="text-sm font-medium text-gray-300 mb-2">Today's Trades</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-gray-400">
+                <tr>
+                  <th className="text-left py-1">Entry</th>
+                  <th className="text-left">Exit</th>
+                  <th>Signal</th>
+                  <th>Strike</th>
+                  <th>Qty</th>
+                  <th>Entry ₹</th>
+                  <th>Exit ₹</th>
+                  <th>P&L</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {status.today_trade_log.map((t, i) => (
+                  <tr key={i} className="border-t border-gray-700">
+                    <td className="py-1">{t.entry_time?.slice(11, 16)}</td>
+                    <td>{t.exit_time?.slice(11, 16)}</td>
+                    <td className="text-center">{t.signal === 'BUY_CALL' ? 'CE' : 'PE'}</td>
+                    <td className="text-center">{t.strike}</td>
+                    <td className="text-center">{t.quantity}</td>
+                    <td className="text-center">₹{t.entry_price}</td>
+                    <td className="text-center">₹{t.exit_price}</td>
+                    <td className={`text-center ${t.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>₹{t.pnl}</td>
+                    <td className="text-center">{t.exit_reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

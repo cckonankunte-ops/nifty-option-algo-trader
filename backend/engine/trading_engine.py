@@ -46,6 +46,7 @@ class TradingEngine:
         self.daily_pnl = 0.0
         self.today_trades = 0
         self.position = None
+        self.today_trade_log = []  # Store today's completed trades
         self._loop_thread: Optional[threading.Thread] = None
 
         # Components
@@ -135,6 +136,7 @@ class TradingEngine:
             "today_pnl": round(self.daily_pnl, 2),
             "today_trades": self.today_trades,
             "position": self.position,
+            "today_trade_log": self.today_trade_log,
             "paper_mode": self.config.get("trading_mode", "paper") == "paper",
             "signal_mode": self.config.get("signal_mode", "SIMPLE_5MIN"),
             "trading_window": {"start": "09:45", "end": "15:15"},
@@ -331,6 +333,21 @@ class TradingEngine:
         pnl = (exit_price - self.position["entry_price"]) * self.position["quantity"]
         self.capital += pnl
         self.daily_pnl += pnl
+
+        # Log completed trade
+        completed_trade = {
+            "entry_time": self.position.get("entry_time", ""),
+            "exit_time": datetime.now(IST).strftime("%Y-%m-%d %H:%M"),
+            "signal": self.position.get("signal", ""),
+            "option_type": self.position.get("option_type", ""),
+            "strike": self.position.get("strike", 0),
+            "quantity": self.position.get("quantity", 0),
+            "entry_price": round(self.position.get("entry_price", 0), 2),
+            "exit_price": round(exit_price, 2),
+            "pnl": round(pnl, 2),
+            "exit_reason": reason,
+        }
+        self.today_trade_log.append(completed_trade)
 
         logger.info(f"Exited: {reason} pnl={pnl:.0f} exit_price={exit_price:.1f}")
 
