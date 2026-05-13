@@ -363,11 +363,20 @@ class TradingEngine:
             self._exit_trade(current_opt_price, "SL_HIT")
 
     def _square_off(self):
-        """Square off open position."""
+        """Square off open position at current market price."""
         if not self.position:
             return
-        # Use SL price as worst case for square-off
-        exit_price = self.position.get("peak_price", self.position["entry_price"])
+
+        # Fetch real current option price for square-off
+        security_id = self.position.get("security_id", "")
+        exit_price = self.position["entry_price"]  # Default fallback
+
+        if security_id and self.dhan_feed:
+            real_price = self.dhan_feed.get_last_price(security_id)
+            if real_price and real_price > 0:
+                exit_price = real_price
+                logger.info(f"Square-off: real LTP for {security_id} = Rs.{exit_price}")
+
         self._exit_trade(exit_price, "SQUARE_OFF")
 
     def _exit_trade(self, exit_price: float, reason: str):
