@@ -255,6 +255,7 @@ class TradingEngine:
 
         # Get expiry
         expiry = SignalEngine.get_weekly_expiry(datetime.now(IST))
+        logger.info(f"Using expiry: {expiry.date()}, looking for {strike}{opt_type_str if 'opt_type_str' in dir() else option_type}")
 
         # Fetch REAL option premium from Dhan
         try:
