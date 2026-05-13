@@ -1,0 +1,91 @@
+//@version=5
+strategy("Nifty Options Algo Strategy", overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+
+// Inputs
+emaFast = input.int(9, "EMA Fast")
+emaSlow = input.int(21, "EMA Slow")
+rsiPeriod = input.int(14, "RSI Period")
+rsiUpper = input.int(55, "RSI Upper Threshold")
+rsiLower = input.int(45, "RSI Lower Threshold")
+slPercent = input.float(20.0, "Stop Loss %") / 100
+
+// Trading Hours (9:45 AM to 3:00 PM IST)
+startHour = input.int(9, "Start Hour")
+startMin = input.int(45, "Start Minute")
+endHour = input.int(15, "End Hour")
+endMin = input.int(0, "End Minute")
+sqOffHour = input.int(15, "Square-off Hour")
+sqOffMin = input.int(15, "Square-off Minute")
+
+// Indicators
+ema9 = ta.ema(close, emaFast)
+ema21 = ta.ema(close, emaSlow)
+rsi = ta.rsi(close, rsiPeriod)
+vwapValue = ta.vwap(hlc3)
+
+// Plot indicators
+plot(ema9, "EMA 9", color=color.green, linewidth=2)
+plot(ema21, "EMA 21", color=color.red, linewidth=2)
+plot(vwapValue, "VWAP", color=color.orange, style=plot.style_circles)
+
+// Trading window check
+inTradingHours = (hour * 60 + minute) >= (startHour * 60 + startMin) and (hour * 60 + minute) <= (endHour * 60 + endMin)
+isSquareOffTime = (hour * 60 + minute) >= (sqOffHour * 60 + sqOffMin)
+noNewEntry = (hour * 60 + minute) >= (endHour * 60 + endMin)
+
+// === BUY CALL (Long) Conditions ===
+// 1. EMA crossover + RSI confirmation
+bullishCrossover = ta.crossover(ema9, ema21) and rsi > rsiUpper
+
+// 2. Trend momentum: EMAs aligned + RSI + price > VWAP
+bullishMomentum = ema9 > ema21 and rsi > rsiUpper and close > vwapValue
+
+// 3. VWAP pullback recovery
+bullishPullback = ema9 > ema21 and ta.crossover(close, vwapValue) and rsi > 50
+
+// Combined BUY CALL signal
+buyCallSignal = (bullishCrossover or bullishMomentum or bullishPullback) and inTradingHours and not noNewEntry
+
+// === BUY PUT (Short) Conditions ===
+// 1. EMA crossover bearish + RSI confirmation
+bearishCrossover = ta.crossunder(ema9, ema21) and rsi < rsiLower
+
+// 2. Trend momentum bearish
+bearishMomentum = ema9 < ema21 and rsi < rsiLower and close < vwapValue
+
+// 3. VWAP pullback bearish
+bearishPullback = ema9 < ema21 and ta.crossunder(close, vwapValue) and rsi < 50
+
+// Combined BUY PUT signal
+buyPutSignal = (bearishCrossover or bearishMomentum or bearishPullback) and inTradingHours and not noNewEntry
+
+// === Strategy Execution ===
+// Entry
+if buyCallSignal and strategy.position_size == 0
+    strategy.entry("BUY_CALL", strategy.long)
+
+if buyPutSignal and strategy.position_size == 0
+    strategy.entry("BUY_PUT", strategy.short)
+
+// Stop Loss
+if strategy.position_size > 0
+    strategy.exit("SL_CALL", "BUY_CALL", stop=strategy.position_avg_price * (1 - slPercent))
+
+if strategy.position_size < 0
+    strategy.exit("SL_PUT", "BUY_PUT", stop=strategy.position_avg_price * (1 + slPercent))
+
+// Square-off at 3:15 PM
+if isSquareOffTime and strategy.position_size != 0
+    strategy.close_all("SQUARE_OFF")
+
+// === Visual Signals ===
+// Plot buy/sell arrows
+plotshape(buyCallSignal and strategy.position_size == 0, "BUY CALL", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(buyPutSignal and strategy.position_size == 0, "BUY PUT", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// Background color for position
+bgcolor(strategy.position_size > 0 ? color.new(color.green, 90) : strategy.position_size < 0 ? color.new(color.red, 90) : na)
+
+// RSI panel
+hline(rsiUpper, "RSI Upper", color=color.gray, linestyle=hline.style_dashed)
+hline(rsiLower, "RSI Lower", color=color.gray, linestyle=hline.style_dashed)
