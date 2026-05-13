@@ -229,15 +229,27 @@ class DhanFeed:
         if price is None and self.dhan:
             # Fallback to REST quote
             try:
-                quote = self.dhan.get_market_quote(
-                    security_id=security_id,
-                    exchange_segment="NSE_FNO"
-                )
-                if quote and quote.get("data"):
-                    price = float(quote["data"].get("LTP", 0))
-                    self._last_tick[security_id] = price
+                response = self.dhan.market_quote(security_id=security_id, exchange_segment="NSE_FNO")
+                if response and response.get("status") == "success" and response.get("data"):
+                    data = response["data"]
+                    if isinstance(data, dict):
+                        # Try different key formats
+                        ltp = data.get("LTP") or data.get("ltp") or data.get("last_price")
+                        if ltp:
+                            price = float(ltp)
+                            self._last_tick[security_id] = price
+            except AttributeError:
+                # Try alternative method names
+                try:
+                    response = self.dhan.get_market_quote_ohlc(security_id=security_id, exchange_segment="NSE_FNO")
+                    if response and response.get("data"):
+                        price = float(response["data"].get("LTP", 0))
+                        if price > 0:
+                            self._last_tick[security_id] = price
+                except Exception as e2:
+                    logger.error(f"All quote methods failed for {security_id}: {e2}")
             except Exception as e:
-                logger.error(f"REST quote fallback failed: {e}")
+                logger.error(f"REST quote failed for {security_id}: {e}")
         return price
 
     # ─── Expired Options Data ────────────────────────────────────────
