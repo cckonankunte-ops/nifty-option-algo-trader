@@ -224,31 +224,33 @@ class DhanFeed:
         return self._connected
 
     def get_last_price(self, security_id: str) -> Optional[float]:
-        """Return last known tick price for security_id."""
+        """Return last known tick price for security_id via Dhan REST API."""
         price = self._last_tick.get(security_id)
         if price is None and self.dhan:
-            # Fetch LTP via Dhan market quote API
             try:
-                response = self.dhan.get_ltp(
-                    security_id=security_id,
-                    exchange_segment="NSE_FNO"
-                )
-                if response and response.get("status") == "success" and response.get("data"):
-                    data = response["data"]
-                    # Response format: {"data": {"NSE_FNO": {"51375": {"last_price": 423.5}}}}
-                    if isinstance(data, dict):
-                        for segment in data.values():
-                            if isinstance(segment, dict):
-                                for sid_data in segment.values():
-                                    if isinstance(sid_data, dict) and "last_price" in sid_data:
-                                        price = float(sid_data["last_price"])
-                                        self._last_tick[security_id] = price
-                                        return price
-                    # Try flat format
-                    ltp = data.get("last_price") or data.get("LTP") or data.get("ltp")
+                import urllib.request
+                import json
+
+                url = "https://api.dhan.co/v2/marketfeed/ltp"
+                payload = json.dumps({"NSE_FNO": [int(security_id)]}).encode("utf-8")
+                headers = {
+                    "Content-Type": "application/json",
+                    "access-token": self.access_token,
+                    "client-id": self.client_id,
+                }
+
+                req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+                response = urllib.request.urlopen(req, timeout=5)
+                data = json.loads(response.read().decode("utf-8"))
+
+                if data.get("status") == "success" and data.get("data"):
+                    nse_fno = data["data"].get("NSE_FNO", {})
+                    sid_data = nse_fno.get(str(security_id), {})
+                    ltp = sid_data.get("last_price")
                     if ltp:
                         price = float(ltp)
                         self._last_tick[security_id] = price
+                        logger.info(f"LTP for {security_id}: Rs.{price}")
             except Exception as e:
                 logger.error(f"LTP fetch failed for {security_id}: {e}")
         return price
