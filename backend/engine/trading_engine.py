@@ -416,6 +416,34 @@ class TradingEngine:
         }
         self.today_trade_log.append(completed_trade)
 
+        # Save trade to database for History page
+        try:
+            from backend.database import SessionLocal
+            from backend.models import Trade
+            db = SessionLocal()
+            trade_record = Trade(
+                symbol=f"NIFTY {completed_trade['strike']} {completed_trade['option_type']}",
+                strike=completed_trade["strike"],
+                option_type="CE" if completed_trade["option_type"] == "CALL" else "PE",
+                entry_time=datetime.strptime(completed_trade["entry_time"], "%Y-%m-%d %H:%M") if completed_trade["entry_time"] else datetime.now(IST),
+                exit_time=datetime.now(IST),
+                entry_price=completed_trade["entry_price"],
+                exit_price=completed_trade["exit_price"],
+                quantity=completed_trade["quantity"],
+                signal_used={"signal": completed_trade["signal"], "mode": self.config.get("signal_mode", "")},
+                pnl=completed_trade["pnl"],
+                pnl_percent=round((pnl / (completed_trade["entry_price"] * completed_trade["quantity"])) * 100, 2) if completed_trade["entry_price"] > 0 else 0,
+                status="CLOSED",
+                exit_reason=reason,
+                trigger_type="paper" if self.config.get("trading_mode") == "paper" else "live",
+            )
+            db.add(trade_record)
+            db.commit()
+            db.close()
+            logger.info(f"Trade saved to database: {completed_trade['signal']} {completed_trade['strike']}")
+        except Exception as e:
+            logger.error(f"Failed to save trade to DB: {e}")
+
         logger.info(f"Exited: {reason} pnl={pnl:.0f} exit_price={exit_price:.1f}")
 
         # Place sell order
